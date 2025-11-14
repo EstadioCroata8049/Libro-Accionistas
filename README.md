@@ -1,54 +1,34 @@
-# Next.js & HeroUI Template
+ # Libro-Accionistas
 
-This is a template for creating applications using Next.js 14 (app directory) and HeroUI (v2).
+Aplicación web para gestionar el libro de accionistas de **Inmobiliaria SA**, construida con:
 
-[Try it on CodeSandbox](https://githubbox.com/heroui-inc/heroui/next-app-template)
+- Next.js (App Router)
+- HeroUI (componentes de UI)
+- Supabase (base de datos y backend as a service)
 
-## Technologies Used
+## Desarrollo
 
-- [Next.js 14](https://nextjs.org/docs/getting-started)
-- [HeroUI v2](https://heroui.com/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Tailwind Variants](https://tailwind-variants.org)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Framer Motion](https://www.framer.com/motion/)
-- [next-themes](https://github.com/pacocoursey/next-themes)
-
-## How to Use
-
-### Use the template with create-next-app
-
-To create a new project based on this template using `create-next-app`, run the following command:
-
-```bash
-npx create-next-app -e https://github.com/heroui-inc/next-app-template
-```
-
-### Install dependencies
-
-You can use one of them `npm`, `yarn`, `pnpm`, `bun`, Example using `npm`:
+Instalar dependencias:
 
 ```bash
 npm install
 ```
 
-### Run the development server
+Servidor de desarrollo:
 
 ```bash
 npm run dev
 ```
 
-### Setup pnpm (optional)
+La aplicación se sirve por defecto en `http://localhost:3000`.
 
-If you are using `pnpm`, you need to add the following code to your `.npmrc` file:
+## Entorno (Supabase)
+
+Crear un archivo `.env.local` en la raíz del proyecto con:
 
 ```bash
-public-hoist-pattern[]=*@heroui/*
+NEXT_PUBLIC_SUPABASE_URL=tu_url_de_supabase
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 ```
 
-After modifying the `.npmrc` file, you need to run `pnpm install` again to ensure that the dependencies are installed correctly.
-
-## License
-
-Licensed under the [MIT license](https://github.com/heroui-inc/next-app-template/blob/main/LICENSE).
-# Libro-Accionistas
+Luego reinicia el servidor de desarrollo.
