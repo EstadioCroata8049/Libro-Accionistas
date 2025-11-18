@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Card, CardBody, CardHeader, CardFooter } from "@heroui/card";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
@@ -47,8 +48,15 @@ export function LoginCard() {
   return (
     <Card className="w-full max-w-md rounded-3xl shadow-xl bg-white text-gray-900">
       <CardHeader className="flex flex-col items-center gap-2 pt-8 pb-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600 text-white text-xl font-bold">
-          EC
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-600">
+          <Image
+            src="/estadio_croatalogo.png"
+            alt="Logo Estadio Croata"
+            width={64}
+            height={64}
+            className="h-14 w-14 object-contain"
+            priority
+          />
         </div>
         <div className="mt-2 flex flex-col items-center gap-0.5 text-center">
           <p className="text-xs font-semibold text-gray-500 tracking-[0.2em]">

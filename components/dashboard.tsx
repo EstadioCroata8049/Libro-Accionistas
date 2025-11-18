@@ -8,57 +8,12 @@ import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
+import { DatePicker } from "@heroui/react";
+import { CalendarDate } from "@internationalized/date";
 
-const mockRows = [
-    // Fila 1 del libro
-    {
-        id: 1,
-        fecha: "01/02/90",
-        transferencia: "—",
-        tituloAnulado: "166",
-        compradoA: "Heredad de Fanny Ambolicic L.",
-        vendidoA: "—",
-        tituloNuevoComprador: "1109",
-        tituloNuevoVendedor: "—",
-        tituloEmitido: "1109",
-        compras: "1",
-        ventas: "—",
-        saldo: "1",
-        observaciones: "Reg. 1/552",
-    },
-    // Fila 2 del libro
-    {
-        id: 2,
-        fecha: "",
-        transferencia: "—",
-        tituloAnulado: "144",
-        compradoA: "—",
-        vendidoA: "—",
-        tituloNuevoComprador: "1108",
-        tituloNuevoVendedor: "—",
-        tituloEmitido: "1108",
-        compras: "10",
-        ventas: "—",
-        saldo: "11",
-        observaciones: "Reg. 1/372",
-    },
-    // Fila 3 del libro
-    {
-        id: 3,
-        fecha: "06/03/90",
-        transferencia: "—",
-        tituloAnulado: "1109, 1108",
-        compradoA: "—",
-        vendidoA: "Antonio Castonic Cukonic",
-        tituloNuevoComprador: "1110",
-        tituloNuevoVendedor: "—",
-        tituloEmitido: "1110",
-        compras: "—",
-        ventas: "11",
-        saldo: "0",
-        observaciones: "Reg. 2/361",
-    },
-];
+import { supabase } from "@/lib/supabaseClient";
+
+const MOV_PAGE_SIZE = 50;
 
 const emptyMovimiento = {
     fecha: "",
@@ -74,51 +29,238 @@ const emptyMovimiento = {
     saldo: "",
     observaciones: "",
 };
-const initialAccionista = {
-    nombre: "Roque Anibalonic Luksic",
-    rut: "12.345.678-9",
-    nacionalidad: "Chilena",
-    direccion: "Vitacura #8049",
-    ciudad: "Santiago",
-    fono: "987654321",
-    saldo: "185 acciones",
-    firma: "Roque A. Luksic",
-};
 const emptyAccionista = {
-    nombre: "",
-    rut: "",
-    nacionalidad: "",
-    direccion: "",
-    ciudad: "",
-    fono: "",
-    saldo: "",
+    nombre: "Sin accionista seleccionado",
+    apellidos: "",
+    rut: "—",
+    nacionalidad: "—",
+    direccion: "—",
+    ciudad: "—",
+    fono: "—",
+    saldo: "0 acciones",
     firma: "",
 };
 
 export function Dashboard() {
     const router = useRouter();
     const [isTableMounted, setIsTableMounted] = useState(false);
-    const [movimientos, setMovimientos] = useState(mockRows);
-    const [accionista, setAccionista] = useState(initialAccionista);
+    const [movimientos, setMovimientos] = useState<any[]>([]);
+    const [movimientosTotal, setMovimientosTotal] = useState(0);
+    const [movimientosPage, setMovimientosPage] = useState(0);
+    const [accionista, setAccionista] = useState(emptyAccionista);
+    const [searchTerm, setSearchTerm] = useState("");
     const [isRegistroOpen, setIsRegistroOpen] = useState(false);
-    const [registroDraft, setRegistroDraft] = useState(emptyAccionista);
+    const [registroDraft, setRegistroDraft] = useState({
+        nombre: "",
+        apellidos: "",
+        rut: "",
+        nacionalidad: "",
+        direccion: "",
+        ciudad: "",
+        fono: "",
+        saldo: "",
+        firma: "",
+    });
     const [isMovimientoOpen, setIsMovimientoOpen] = useState(false);
     const [newMovimiento, setNewMovimiento] = useState(emptyMovimiento);
+    const [movimientoFecha, setMovimientoFecha] = useState<CalendarDate | null>(null);
     const [editingRowId, setEditingRowId] = useState<number | null>(null);
     const [editingMovimiento, setEditingMovimiento] = useState<any | null>(null);
+    const [registroSaving, setRegistroSaving] = useState(false);
+    const [toastState, setToastState] = useState<
+        | {
+              type: "success" | "error";
+              message: string;
+          }
+        | null
+    >(null);
 
     useEffect(() => {
         setIsTableMounted(true);
-    }, []);
+
+        const fetchData = async () => {
+            // 1) Buscar accionista según searchTerm (RUT / nombre). Si no hay término, tomar el primero.
+            let accionistasQuery = supabase.from("accionistas").select("*");
+
+            const trimmed = searchTerm.trim();
+            if (trimmed.length > 0) {
+                accionistasQuery = accionistasQuery.or(
+                    `rut.ilike.%${trimmed}%,nombre.ilike.%${trimmed}%,apellidos.ilike.%${trimmed}%`,
+                );
+            }
+
+            const { data: accionistas, error } = await accionistasQuery
+                .order("nombre", { ascending: true })
+                .limit(1);
+
+            if (!error && accionistas && accionistas.length > 0) {
+                const a: any = accionistas[0];
+
+                setAccionista({
+                    nombre: a.nombre ?? "",
+                    apellidos: a.apellidos ?? "",
+                    rut: a.rut ?? "",
+                    nacionalidad: a.nacionalidad ?? "",
+                    direccion: a.direccion ?? "",
+                    ciudad: a.ciudad ?? "",
+                    fono: a.fono ?? "",
+                    saldo:
+                        a.saldo_acciones != null
+                            ? `${a.saldo_acciones} acciones`
+                            : "0 acciones",
+                    firma: a.firma ?? "",
+                });
+
+                // 2) Paginación de movimientos para ese accionista
+                const from = movimientosPage * MOV_PAGE_SIZE;
+                const to = from + MOV_PAGE_SIZE - 1;
+
+                const { data: movs, error: movsError, count } = await supabase
+                    .from("movimientos")
+                    .select("*", { count: "exact" })
+                    .eq("accionista_id", a.id)
+                    .order("fecha_transferencia", { ascending: true })
+                    .range(from, to);
+
+                if (!movsError && movs) {
+                    const mapped = movs.map((m: any, index: number) => ({
+                        id: from + index + 1,
+                        fecha: m.fecha_transferencia
+                            ? (() => {
+                                  const d = new Date(m.fecha_transferencia);
+                                  const dd = String(d.getDate()).padStart(2, "0");
+                                  const mm = String(d.getMonth() + 1).padStart(2, "0");
+                                  const yyyy = d.getFullYear();
+                                  return `${dd} - ${mm} - ${yyyy}`;
+                              })()
+                            : "",
+                        transferencia: m.numero_transferencia ?? "—",
+                        tituloAnulado: m.titulo_inutilizado ?? "",
+                        compradoA: m.comprado_a ?? "—",
+                        vendidoA: m.vendido_a ?? "—",
+                        tituloNuevoComprador: m.titulo_nuevo_comprador ?? "",
+                        tituloNuevoVendedor: m.titulo_nuevo_vendedor ?? "",
+                        compras:
+                            m.compras != null && m.compras !== undefined
+                                ? String(m.compras)
+                                : "—",
+                        ventas:
+                            m.ventas != null && m.ventas !== undefined
+                                ? String(m.ventas)
+                                : "—",
+                        saldo:
+                            m.saldo != null && m.saldo !== undefined
+                                ? String(m.saldo)
+                                : "—",
+                        observaciones: m.observaciones ?? "",
+                        tituloEmitido: m.numero_titulo_emitido ?? "",
+                    }));
+                    setMovimientos(mapped);
+                    setMovimientosTotal(count ?? mapped.length);
+                } else {
+                    setMovimientos([]);
+                    setMovimientosTotal(0);
+                }
+            } else {
+                setAccionista(emptyAccionista);
+                setMovimientos([]);
+                setMovimientosTotal(0);
+            }
+        };
+
+        fetchData();
+    }, [searchTerm, movimientosPage]);
+
+    useEffect(() => {
+        if (!toastState) return;
+        const id = setTimeout(() => setToastState(null), 3000);
+        return () => clearTimeout(id);
+    }, [toastState]);
 
     const handleOpenCreateRegistro = () => {
-        setRegistroDraft(emptyAccionista);
+        setRegistroDraft({
+            nombre: "",
+            apellidos: "",
+            rut: "",
+            nacionalidad: "",
+            direccion: "",
+            ciudad: "",
+            fono: "",
+            saldo: "",
+            firma: "",
+        });
         setIsRegistroOpen(true);
     };
 
-    const handleSaveRegistro = () => {
-        setAccionista(registroDraft);
-        setMovimientos([]);
+    const handleSaveRegistro = async () => {
+        if (!registroDraft.nombre || !registroDraft.rut) {
+            setToastState({
+                type: "error",
+                message: "Nombre y RUT son obligatorios",
+            });
+            return;
+        }
+
+        try {
+            setRegistroSaving(true);
+
+            const saldoNumber = (() => {
+                if (!registroDraft.saldo) return null;
+                const match = registroDraft.saldo.match(/\d+/);
+                return match ? Number(match[0]) : null;
+            })();
+
+            const { data, error } = await supabase
+                .from("accionistas")
+                .upsert(
+                    {
+                        nombre: registroDraft.nombre,
+                        apellidos: registroDraft.apellidos || null,
+                        rut: registroDraft.rut,
+                        nacionalidad: registroDraft.nacionalidad || null,
+                        direccion: registroDraft.direccion || null,
+                        ciudad: registroDraft.ciudad || null,
+                        fono: registroDraft.fono || null,
+                        saldo_acciones: saldoNumber,
+                        firma: null,
+                    },
+                    { onConflict: "rut" },
+                )
+                .select("*")
+                .single();
+
+            if (error || !data) {
+                setToastState({
+                    type: "error",
+                    message: "Error al guardar el registro",
+                });
+                return;
+            }
+
+            const a: any = data;
+
+            setAccionista({
+                nombre: a.nombre ?? "",
+                apellidos: a.apellidos ?? "",
+                rut: a.rut ?? "",
+                nacionalidad: a.nacionalidad ?? "",
+                direccion: a.direccion ?? "",
+                ciudad: a.ciudad ?? "",
+                fono: a.fono ?? "",
+                saldo:
+                    a.saldo_acciones != null
+                        ? `${a.saldo_acciones} acciones`
+                        : "0 acciones",
+                firma: "",
+            });
+
+            setMovimientos([]);
+            setMovimientosPage(0);
+            setIsRegistroOpen(false);
+            setToastState({ type: "success", message: "Registro guardado con éxito" });
+        } finally {
+            setRegistroSaving(false);
+        }
     };
 
     const handleOpenMovimiento = () => {
@@ -201,16 +343,19 @@ export function Dashboard() {
                                     label="Buscar"
                                     radius="sm"
                                     variant="bordered"
-                                    placeholder="Buscar por nombre, RUT o número de título..."
+                                    placeholder="Buscar por nombre, apellido o RUT..."
                                     className="md:w-80 lg:w-96"
                                     classNames={{
                                         inputWrapper: "bg-white border-gray-200",
+                                        input: "text-black placeholder:text-gray-400",
                                     }}
+                                    value={searchTerm}
+                                    onValueChange={setSearchTerm}
                                 />
                                 <div className="flex gap-2 md:flex-none">
                                     <Button radius="sm" className="bg-blue-600 text-white"
-                                    variant="shadow"
-                                    color="primary"
+                                        variant="shadow"
+                                        color="primary"
 
                                     >
                                         Buscar
@@ -255,7 +400,7 @@ export function Dashboard() {
                                 Datos accionista
                             </p>
                             <p className="mt-1 text-base font-semibold text-gray-900">
-                                {accionista.nombre}
+                                {[accionista.nombre, accionista.apellidos].filter(Boolean).join(" ")}
                             </p>
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
@@ -290,7 +435,9 @@ export function Dashboard() {
                                 <div className="mt-2 flex flex-col items-center gap-1">
                                     <div className="h-10 w-full max-w-xs rounded-md border border-gray-200 bg-white px-4 py-1.5">
                                         <p className="text-lg font-semibold text-gray-700 italic font-[cursive] tracking-wide">
-                                            {accionista.firma}
+                                            {[accionista.nombre, accionista.apellidos]
+                                                .filter(Boolean)
+                                                .join(" ")}
                                         </p>
                                     </div>
                                     <p className="text-[10px] text-gray-400">
@@ -637,9 +784,14 @@ export function Dashboard() {
                                         <ModalBody>
                                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                 <Input
-                                                    label="Nombre accionista"
+                                                    label="Nombres"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.nombre}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
@@ -649,9 +801,30 @@ export function Dashboard() {
                                                     }
                                                 />
                                                 <Input
+                                                    label="Apellidos"
+                                                    variant="bordered"
+                                                    radius="sm"
+                                                    classNames={{
+                                                        inputWrapper: "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
+                                                    value={registroDraft.apellidos}
+                                                    onValueChange={(value) =>
+                                                        setRegistroDraft((prev) => ({
+                                                            ...prev,
+                                                            apellidos: value,
+                                                        }))
+                                                    }
+                                                />
+                                                <Input
                                                     label="RUT"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.rut}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
@@ -664,6 +837,11 @@ export function Dashboard() {
                                                     label="Nacionalidad"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.nacionalidad}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
@@ -676,6 +854,11 @@ export function Dashboard() {
                                                     label="Dirección"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.direccion}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
@@ -688,6 +871,11 @@ export function Dashboard() {
                                                     label="Ciudad"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.ciudad}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
@@ -700,6 +888,11 @@ export function Dashboard() {
                                                     label="Fono"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.fono}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
@@ -712,23 +905,16 @@ export function Dashboard() {
                                                     label="Saldo actual"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={registroDraft.saldo}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
                                                             ...prev,
                                                             saldo: value,
-                                                        }))
-                                                    }
-                                                />
-                                                <Input
-                                                    label="Firma"
-                                                    variant="bordered"
-                                                    radius="sm"
-                                                    value={registroDraft.firma}
-                                                    onValueChange={(value) =>
-                                                        setRegistroDraft((prev) => ({
-                                                            ...prev,
-                                                            firma: value,
                                                         }))
                                                     }
                                                 />
@@ -761,23 +947,58 @@ export function Dashboard() {
                                             Nuevo movimiento
                                         </ModalHeader>
                                         <ModalBody>
-                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                                <Input
-                                                    label="Fecha transferencia"
+                                            <p className="text-xs font-medium text-gray-500">
+                                                Accionista:{" "}
+                                                <span className="text-gray-900">
+                                                    {[accionista.nombre, accionista.apellidos]
+                                                        .filter(Boolean)
+                                                        .join(" ")}
+                                                </span>
+                                            </p>
+                                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <DatePicker
+                                                    label="Fecha"
                                                     variant="bordered"
                                                     radius="sm"
-                                                    value={newMovimiento.fecha}
-                                                    onValueChange={(value) =>
-                                                        setNewMovimiento((prev) => ({
-                                                            ...prev,
-                                                            fecha: value,
-                                                        }))
-                                                    }
+                                                    classNames={{
+                                                        base: "max-w-full",
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                        innerWrapper: "text-gray-900",
+                                                        input: "text-gray-900 placeholder:text-gray-500",
+                                                    }}
+                                                    value={movimientoFecha}
+                                                    onChange={(value) => {
+                                                        setMovimientoFecha(value);
+
+                                                        if (value) {
+                                                            const dd = String(value.day).padStart(2, "0");
+                                                            const mm = String(value.month).padStart(2, "0");
+                                                            const yyyy = String(value.year);
+                                                            const formatted = `${dd}/${mm}/${yyyy}`;
+
+                                                            setNewMovimiento((prev) => ({
+                                                                ...prev,
+                                                                fecha: formatted,
+                                                            }));
+                                                        } else {
+                                                            setNewMovimiento((prev) => ({
+                                                                ...prev,
+                                                                fecha: "",
+                                                            }));
+                                                        }
+                                                    }}
                                                 />
                                                 <Input
                                                     label="N° transferencia"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.transferencia}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -790,6 +1011,11 @@ export function Dashboard() {
                                                     label="N° título inutilizado"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.tituloAnulado}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -802,6 +1028,11 @@ export function Dashboard() {
                                                     label="Comprado a"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.compradoA}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -814,6 +1045,11 @@ export function Dashboard() {
                                                     label="Vendido a"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.vendidoA}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -826,6 +1062,11 @@ export function Dashboard() {
                                                     label="N° título nuevo comprador"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.tituloNuevoComprador}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -838,6 +1079,11 @@ export function Dashboard() {
                                                     label="N° título nuevo vendedor"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.tituloNuevoVendedor}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -850,6 +1096,11 @@ export function Dashboard() {
                                                     label="N° título emitido"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.tituloEmitido}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -862,6 +1113,11 @@ export function Dashboard() {
                                                     label="Compras"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.compras}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -874,6 +1130,11 @@ export function Dashboard() {
                                                     label="Ventas"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.ventas}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -886,6 +1147,11 @@ export function Dashboard() {
                                                     label="Saldo"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.saldo}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -898,6 +1164,11 @@ export function Dashboard() {
                                                     label="Observaciones"
                                                     variant="bordered"
                                                     radius="sm"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-gray-100 border-gray-200 text-gray-900",
+                                                        label: "text-gray-600",
+                                                    }}
                                                     value={newMovimiento.observaciones}
                                                     onValueChange={(value) =>
                                                         setNewMovimiento((prev) => ({
@@ -930,6 +1201,22 @@ export function Dashboard() {
                     </CardBody>
                 </Card>
             </div>
+
+            {toastState && (
+                <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+                    <div
+                        className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm shadow-lg
+                        ${toastState.type === "success" ? "bg-emerald-600 text-emerald-50" : "bg-red-600 text-white"}`}
+                    >
+                        {toastState.type === "success" && (
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full border border-emerald-100 text-[10px]">
+                                ✓
+                            </span>
+                        )}
+                        <span className="font-medium">{toastState.message}</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
