@@ -9,6 +9,7 @@ import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 
 import { supabase } from "@/lib/supabaseClient";
+import bcrypt from "bcryptjs";
 
 export function LoginCard() {
   const router = useRouter();
@@ -22,11 +23,14 @@ export function LoginCard() {
     event.preventDefault();
     setError(null);
     setLoading(true);
+
+    const usernameTrimmed = username.trim();
+    const passwordTrimmed = password.trim();
+
     const { data: userRecord, error: userError } = await supabase
       .from("users")
-      .select("id, username")
-      .eq("username", username)
-      .eq("password", password)
+      .select("id, username, password")
+      .eq("username", usernameTrimmed)
       .maybeSingle();
 
     if (userError) {
@@ -35,11 +39,25 @@ export function LoginCard() {
       return;
     }
 
-    if (!userRecord) {
+    if (!userRecord || !userRecord.password) {
       setError("Usuario o contraseña incorrectos");
       setLoading(false);
       return;
     }
+
+    const passwordOk = await bcrypt.compare(
+      passwordTrimmed,
+      userRecord.password,
+    );
+
+    if (!passwordOk) {
+      setError("Usuario o contraseña incorrectos");
+      setLoading(false);
+      return;
+    }
+
+    // Marca de sesion muy simple basada en cookie legible en middleware
+    document.cookie = "logged_in=1; path=/; max-age=86400"; // 1 dia
 
     router.push("/dashboard");
     setLoading(false);

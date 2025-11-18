@@ -353,10 +353,11 @@ export function Dashboard() {
                                     onValueChange={setSearchTerm}
                                 />
                                 <div className="flex gap-2 md:flex-none">
-                                    <Button radius="sm" className="bg-blue-600 text-white"
+                                    <Button
+                                        radius="sm"
+                                        className="bg-blue-600 text-white"
                                         variant="shadow"
                                         color="primary"
-
                                     >
                                         Buscar
                                     </Button>
@@ -368,6 +369,14 @@ export function Dashboard() {
                                         onPress={handleOpenCreateRegistro}
                                     >
                                         Crear registro
+                                    </Button>
+                                    <Button
+                                        radius="sm"
+                                        variant="shadow"
+                                        color="primary"
+                                        onPress={() => router.push("/admin/users")}
+                                    >
+                                        Crear usuario
                                     </Button>
                                 </div>
                             </div>
@@ -386,7 +395,10 @@ export function Dashboard() {
                                         size="sm"
                                         variant="shadow"
                                         color="danger"
-                                        onPress={() => router.push("/login")}
+                                        onPress={() => {
+                                            document.cookie = "logged_in=; path=/; max-age=0";
+                                            router.push("/login");
+                                        }}
                                     >
                                         Cerrar sesión
                                     </Button>

@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   turbopack: {
-    root: __dirname,
+    // Usamos el directorio de trabajo actual como raíz
+    root: process.cwd(),
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
