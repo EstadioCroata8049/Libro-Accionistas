@@ -18,11 +18,13 @@ export function LoginCard() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loggedInVisual, setLoggedInVisual] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setLoading(true);
+    setLoggedInVisual(false);
 
     const usernameTrimmed = username.trim();
     const passwordTrimmed = password.trim();
@@ -59,8 +61,13 @@ export function LoginCard() {
     // Marca de sesion muy simple basada en cookie legible en middleware
     document.cookie = "logged_in=1; path=/; max-age=86400"; // 1 dia
 
-    router.push("/dashboard");
+    // Cambia visualmente el botón a "Ingresado" y espera un instante
+    setLoggedInVisual(true);
     setLoading(false);
+
+    setTimeout(() => {
+      router.push("/dashboard");
+    }, 600);
   };
 
   return (
@@ -140,11 +147,13 @@ export function LoginCard() {
           <Button
             type="submit"
             radius="sm"
-            className="mt-2 bg-red-600 font-semibold text-white"
+            className={`mt-2 font-semibold text-white ${
+              loggedInVisual ? "bg-green-600" : "bg-red-600"
+            }`}
             fullWidth
             isLoading={loading}
           >
-            INGRESAR
+            {loggedInVisual ? "INGRESADO" : "INGRESAR"}
           </Button>
           {error && (
             <p className="mt-1 text-center text-xs text-red-600">{error}</p>
