@@ -1,6 +1,6 @@
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
-  name: "Inmobiliaria SA",
+  name: "Libro electrónico de accionistas",
   description: "Aplicación web construida con Next.js, HeroUI y Supabase.",
 };
