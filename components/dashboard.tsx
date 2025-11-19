@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@heroui/card";
@@ -8,12 +8,93 @@ import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
-import { DatePicker, ToastProvider, addToast } from "@heroui/react";
+import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, ToastProvider, addToast } from "@heroui/react";
 import { CalendarDate } from "@internationalized/date";
 
 import { supabase } from "@/lib/supabaseClient";
 
 const MOV_PAGE_SIZE = 50;
+
+const iconClasses = "text-xl text-default-500 pointer-events-none shrink-0";
+
+const AddNoteIcon = (props: any) => {
+    return (
+        <svg
+            aria-hidden="true"
+            fill="none"
+            focusable="false"
+            height="1em"
+            role="presentation"
+            viewBox="0 0 24 24"
+            width="1em"
+            {...props}
+        >
+            <path
+                d="M7.37 22h9.25a4.87 4.87 0 0 0 4.87-4.87V8.37a4.87 4.87 0 0 0-4.87-4.87H7.37A4.87 4.87 0 0 0 2.5 8.37v8.75c0 2.7 2.18 4.88 4.87 4.88Z"
+                fill="currentColor"
+                opacity={0.4}
+            />
+            <path
+                d="M8.29 6.29c-.42 0-.75-.34-.75-.75V2.75a.749.749 0 1 1 1.5 0v2.78c0 .42-.33.76-.75.76ZM15.71 6.29c-.42 0-.75-.34-.75-.75V2.75a.749.749 0 1 1 1.5 0v2.78c0 .42-.33.76-.75.76ZM12 14.75h-1.69V13c0-.41-.34-.75-.75-.75s-.75.34-.75.75v1.75H7c-.41 0-.75.34-.75.75s.34.75.75.75h1.81V18c0 .41.34.75.75.75s.75-.34.75-.75v-1.75H12c.41 0 .75-.34.75-.75s-.34-.75-.75-.75Z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+};
+
+const DownloadIcon = (props: any) => {
+    return (
+        <svg
+            aria-hidden="true"
+            fill="none"
+            focusable="false"
+            height="1em"
+            role="presentation"
+            viewBox="0 0 24 24"
+            width="1em"
+            {...props}
+        >
+            <path
+                d="M12.12 15.5a.75.75 0 0 1-.53-.22l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.97 2.97 2.97-2.97a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-.53.22Z"
+                fill="currentColor"
+            />
+            <path
+                d="M12 15.5c-.41 0-.75-.34-.75-.75V3.5c0-.41.34-.75.75-.75s.75.34.75.75v11.25c0 .41-.34.75-.75.75Z"
+                fill="currentColor"
+            />
+            <path
+                d="M12 22.75C6.07 22.75 1.25 17.93 1.25 12S6.07 1.25 12 1.25 22.75 6.07 22.75 12 17.93 22.75 12 22.75Zm0-20C6.9 2.75 2.75 6.9 2.75 12S6.9 21.25 12 21.25s9.25-4.15 9.25-9.25S17.1 2.75 12 2.75Z"
+                fill="currentColor"
+                opacity={0.4}
+            />
+        </svg>
+    );
+};
+
+const ExportIcon = (props: any) => {
+    return (
+        <svg
+            aria-hidden="true"
+            fill="none"
+            focusable="false"
+            height="1em"
+            role="presentation"
+            viewBox="0 0 24 24"
+            width="1em"
+            {...props}
+        >
+            <path
+                d="M16.19 2H7.81C4.17 2 2 4.17 2 7.81v8.37C2 19.83 4.17 22 7.81 22h8.37c3.64 0 5.81-2.17 5.81-5.81V7.81C22 4.17 19.83 2 16.19 2Z"
+                fill="currentColor"
+                opacity={0.4}
+            />
+            <path
+                d="M16.78 9.7h-4.99c-.55 0-1-.45-1-1V2.75c0-.3.34-.48.58-.3l5.67 4.17c.27.2.27.62 0 .82l-.26.26Z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+};
 
 const emptyMovimiento = {
     fecha: "",
@@ -30,19 +111,21 @@ const emptyMovimiento = {
     observaciones: "",
 };
 const emptyAccionista = {
-    nombre: "Sin accionista seleccionado",
+    nombre: "",
     apellidos: "",
     rut: "-",
     nacionalidad: "-",
     direccion: "-",
     ciudad: "-",
     fono: "-",
-    saldo: "0 acciones",
+    fechaDefuncion: "-",
+    saldo: "-",
     firma: "",
 };
 
 export function Dashboard() {
     const router = useRouter();
+    const pdfInputRef = useRef<HTMLInputElement | null>(null);
     const [isTableMounted, setIsTableMounted] = useState(false);
     const [movimientos, setMovimientos] = useState<any[]>([]);
     const [movimientosTotal, setMovimientosTotal] = useState(0);
@@ -59,6 +142,7 @@ export function Dashboard() {
         direccion: "",
         ciudad: "",
         fono: "",
+        fechaDefuncion: "",
         saldo: "",
         firma: "",
     });
@@ -70,6 +154,250 @@ export function Dashboard() {
     const [isConfirmEditOpen, setIsConfirmEditOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [registroSaving, setRegistroSaving] = useState(false);
+    const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
+
+    const handleOpenPdfPicker = () => {
+        if (!accionistaId) {
+            addToast({
+                title: "Selecciona un accionista",
+                description: "Debes elegir un accionista antes de adjuntar PDFs.",
+                color: "warning",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            return;
+        }
+
+        if (pdfInputRef.current) {
+            pdfInputRef.current.click();
+        }
+    };
+
+    const handlePdfChange = async (event: any) => {
+        const file = event.target.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        if (file.type !== "application/pdf") {
+            addToast({
+                title: "Archivo no válido",
+                description: "Sólo se permiten archivos PDF.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            event.target.value = "";
+            return;
+        }
+
+        // Validar tamaño máximo de 5MB
+        const maxSize = 5 * 1024 * 1024; // 5MB en bytes
+        if (file.size > maxSize) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            addToast({
+                title: "Archivo muy grande",
+                description: `El archivo pesa ${sizeMB}MB. El tamaño máximo es 5MB.`,
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            event.target.value = "";
+            return;
+        }
+
+        if (!accionistaId) {
+            addToast({
+                title: "Error",
+                description: "No hay accionista seleccionado.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            event.target.value = "";
+            return;
+        }
+
+        try {
+            // Nombre del archivo en Storage: accionista_{id}.pdf
+            const fileName = `accionista_${accionistaId}.pdf`;
+            const filePath = `${fileName}`;
+
+            // Subir archivo a Supabase Storage
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from("documentos")
+                .upload(filePath, file, {
+                    cacheControl: "3600",
+                    upsert: true, // Reemplazar si ya existe
+                });
+
+            if (uploadError) {
+                console.error("Error subiendo PDF:", uploadError);
+                addToast({
+                    title: "Error al subir",
+                    description: uploadError.message,
+                    color: "danger",
+                    variant: "solid",
+                    timeout: 2000,
+                    shouldShowTimeoutProgress: true,
+                });
+                event.target.value = "";
+                return;
+            }
+
+            // Obtener URL pública del archivo
+            const { data: urlData } = supabase.storage
+                .from("documentos")
+                .getPublicUrl(filePath);
+
+            const publicUrl = urlData.publicUrl;
+
+            // Actualizar la tabla accionistas con la URL del PDF
+            const { error: updateError } = await supabase
+                .from("accionistas")
+                .update({ pdf_url: publicUrl })
+                .eq("id", accionistaId);
+
+            if (updateError) {
+                console.error("Error actualizando accionista:", updateError);
+                addToast({
+                    title: "Error al guardar",
+                    description: "El PDF se subió pero no se pudo guardar la referencia.",
+                    color: "warning",
+                    variant: "solid",
+                    timeout: 2000,
+                    shouldShowTimeoutProgress: true,
+                });
+            } else {
+                // Actualizar estado local
+                setAccionistaPdfUrl(publicUrl);
+
+                addToast({
+                    title: "PDF subido",
+                    description: file.name,
+                    color: "success",
+                    variant: "solid",
+                    timeout: 2000,
+                    shouldShowTimeoutProgress: true,
+                });
+            }
+        } catch (error) {
+            console.error("Error en handlePdfChange:", error);
+            addToast({
+                title: "Error inesperado",
+                description: "No se pudo subir el PDF.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+        }
+
+        event.target.value = "";
+    };
+
+    const handleDownloadPdf = () => {
+        if (!accionistaPdfUrl) {
+            addToast({
+                title: "Sin documento",
+                description: "No hay PDF disponible para este accionista.",
+                color: "warning",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            return;
+        }
+
+        // Abrir el PDF en una nueva pestaña
+        window.open(accionistaPdfUrl, "_blank");
+    };
+
+    const handleExportToExcel = async () => {
+        if (!accionistaId) {
+            addToast({
+                title: "Selecciona un accionista",
+                description: "Debes elegir un accionista antes de exportar.",
+                color: "warning",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            return;
+        }
+
+        try {
+            // Importar dinámicamente la librería exceljs
+            const ExcelJS = await import("exceljs");
+
+            // Crear workbook y worksheet
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet("Accionista");
+
+            // Definir columnas
+            worksheet.columns = [
+                { header: "Campo", key: "campo", width: 20 },
+                { header: "Valor", key: "valor", width: 40 },
+            ];
+
+            // Agregar datos del accionista (sin firma)
+            worksheet.addRow({ campo: "Nombre", valor: accionista.nombre || "-" });
+            worksheet.addRow({ campo: "Apellidos", valor: accionista.apellidos || "-" });
+            worksheet.addRow({ campo: "RUT", valor: accionista.rut || "-" });
+            worksheet.addRow({ campo: "Nacionalidad", valor: accionista.nacionalidad || "-" });
+            worksheet.addRow({ campo: "Dirección", valor: accionista.direccion || "-" });
+            worksheet.addRow({ campo: "Ciudad", valor: accionista.ciudad || "-" });
+            worksheet.addRow({ campo: "Fono", valor: accionista.fono || "-" });
+            worksheet.addRow({ campo: "Fecha defunción", valor: accionista.fechaDefuncion || "-" });
+            worksheet.addRow({
+                campo: "Saldo",
+                valor: movimientos.length > 0
+                    ? movimientos[movimientos.length - 1].saldo
+                    : accionista.saldo ?? "-",
+            });
+
+            // Estilo del encabezado
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFE0E0E0" },
+            };
+
+            // Generar buffer y descargar
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            
+            // Nombre del archivo: "Nombre Apellidos_datos_exportados.xlsx"
+            const nombreCompleto = [accionista.nombre, accionista.apellidos]
+                .filter(Boolean)
+                .join(" ") || "accionista";
+            link.download = `${nombreCompleto}_datos_exportados.xlsx`;
+            
+            link.click();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error exportando a Excel:", error);
+            addToast({
+                title: "Error al exportar",
+                description: "No se pudo generar el archivo Excel.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+        }
+    };
 
     useEffect(() => {
         setIsTableMounted(true);
@@ -100,14 +428,25 @@ export function Dashboard() {
                     direccion: a.direccion ?? "",
                     ciudad: a.ciudad ?? "",
                     fono: a.fono ?? "",
+                    fechaDefuncion:
+                        a.fecha_defuncion
+                            ? (() => {
+                                  const d = new Date(a.fecha_defuncion);
+                                  const dd = String(d.getDate()).padStart(2, "0");
+                                  const mm = String(d.getMonth() + 1).padStart(2, "0");
+                                  const yyyy = d.getFullYear();
+                                  return `${dd} - ${mm} - ${yyyy}`;
+                              })()
+                            : "-",
                     saldo:
                         a.saldo_acciones != null
                             ? `${a.saldo_acciones} acciones`
-                            : "0 acciones",
+                            : "-",
                     firma: a.firma ?? "",
                 });
 
                 setAccionistaId(a.id ?? null);
+                setAccionistaPdfUrl(a.pdf_url ?? null);
 
                 // 2) Paginación de movimientos para ese accionista
                 const from = movimientosPage * MOV_PAGE_SIZE;
@@ -189,8 +528,56 @@ export function Dashboard() {
             direccion: "",
             ciudad: "",
             fono: "",
+            fechaDefuncion: "",
             saldo: "",
             firma: "",
+        });
+        setIsRegistroOpen(true);
+    };
+
+    const handleOpenEditRegistro = () => {
+        // Si no hay accionista real seleccionado, no hacemos nada
+        if (!accionistaId) {
+            return;
+        }
+
+        // Convertir la fecha de defunción mostrada (dd - mm - aaaa) a formato ISO simple (aaaa-mm-dd)
+        const fechaDefuncionIso =
+            accionista.fechaDefuncion && accionista.fechaDefuncion !== "-"
+                ? (() => {
+                      const parts = accionista.fechaDefuncion.split(" - ");
+                      if (parts.length === 3) {
+                          const [dd, mm, yyyy] = parts;
+                          return `${yyyy}-${mm}-${dd}`;
+                      }
+                      return "";
+                  })()
+                : "";
+
+        const saldoSoloNumero = (() => {
+            // Misma lógica que la tarjeta: si hay movimientos, usamos el saldo del último,
+            // si no, usamos el saldo del accionista.
+            const saldoTexto =
+                movimientos.length > 0
+                    ? movimientos[movimientos.length - 1].saldo
+                    : accionista.saldo;
+
+            if (!saldoTexto) return "";
+            const match = String(saldoTexto).match(/\d+/);
+            return match ? match[0] : "";
+        })();
+
+        setRegistroDraft({
+            nombre: accionista.nombre || "",
+            apellidos: accionista.apellidos || "",
+            rut: accionista.rut || "",
+            nacionalidad: accionista.nacionalidad || "",
+            direccion: accionista.direccion || "",
+            ciudad: accionista.ciudad || "",
+            fono: accionista.fono || "",
+            fechaDefuncion: fechaDefuncionIso,
+            saldo: saldoSoloNumero,
+            firma: accionista.firma || "",
         });
         setIsRegistroOpen(true);
     };
@@ -213,6 +600,7 @@ export function Dashboard() {
                 direccion: registroDraft.direccion || null,
                 ciudad: registroDraft.ciudad || null,
                 fono: registroDraft.fono || null,
+                fecha_defuncion: registroDraft.fechaDefuncion || null,
                 saldo_acciones: saldoNumber,
                 firma: registroDraft.firma || null,
             };
@@ -255,11 +643,21 @@ export function Dashboard() {
                 direccion: a.direccion ?? "",
                 ciudad: a.ciudad ?? "",
                 fono: a.fono ?? "",
+                fechaDefuncion:
+                    a.fecha_defuncion
+                        ? (() => {
+                              const d = new Date(a.fecha_defuncion);
+                              const dd = String(d.getDate()).padStart(2, "0");
+                              const mm = String(d.getMonth() + 1).padStart(2, "0");
+                              const yyyy = d.getFullYear();
+                              return `${dd} - ${mm} - ${yyyy}`;
+                          })()
+                        : "-",
                 saldo:
                     a.saldo_acciones != null
                         ? `${a.saldo_acciones} acciones`
-                        : "0 acciones",
-                firma: "",
+                        : "-",
+                firma: a.firma ?? "",
             });
 
             setAccionistaId(a.id ?? null);
@@ -509,6 +907,15 @@ export function Dashboard() {
                 <ToastProvider placement="bottom-center" />
             </div>
 
+            {/* Input oculto para seleccionar PDFs */}
+            <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={handlePdfChange}
+            />
+
             <div className="flex w-full flex-col gap-4">
                 {/* Rectángulo superior: barra de búsqueda + datos accionista */}
                 <Card className="w-full bg-white/95 shadow-xl">
@@ -520,7 +927,7 @@ export function Dashboard() {
                                     Libro electrónico de accionistas
                                 </p>
                                 <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">
-                                    Estadio Croata
+                                    Inmobiliaria Yugoslava S.A
                                 </h1>
                             </div>
                             <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -589,7 +996,11 @@ export function Dashboard() {
                                 Datos accionista
                             </p>
                             <p className="mt-1 text-base font-semibold text-gray-900">
-                                {[accionista.nombre, accionista.apellidos].filter(Boolean).join(" ")}
+                                {
+                                    [accionista.nombre, accionista.apellidos]
+                                        .filter(Boolean)
+                                        .join(" ") || "-"
+                                }
                             </p>
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
@@ -613,6 +1024,12 @@ export function Dashboard() {
                                     <p className="text-sm text-gray-900">{accionista.fono || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
+                                    <p className="text-[11px] text-gray-500">Fecha defunción</p>
+                                    <p className="text-sm text-gray-900">
+                                        {accionista.fechaDefuncion || "-"}
+                                    </p>
+                                </div>
+                                <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Saldo</p>
                                     <p className="text-sm font-semibold text-gray-900">
                                         {movimientos.length > 0
@@ -621,16 +1038,69 @@ export function Dashboard() {
                                     </p>
                                 </div>
                             </div>
+                            <div className="mt-2 flex justify-end gap-2">
+                                <Dropdown>
+                                    <DropdownTrigger>
+                                        <Button
+                                            radius="sm"
+                                            size="sm"
+                                            variant="shadow"
+                                            color="primary"
+                                        >
+                                            Documentos
+                                        </Button>
+                                    </DropdownTrigger>
+                                    <DropdownMenu
+                                        aria-label="Acciones de documentos del accionista"
+                                        variant="faded"
+                                    >
+                                        <DropdownItem
+                                            key="upload-pdf"
+                                            startContent={<AddNoteIcon className={iconClasses} />}
+                                            onPress={handleOpenPdfPicker}
+                                        >
+                                            Subir PDF
+                                        </DropdownItem>
+                                        <DropdownItem
+                                            key="download-pdf"
+                                            startContent={<DownloadIcon className={iconClasses} />}
+                                            onPress={handleDownloadPdf}
+                                            isDisabled={!accionistaPdfUrl}
+                                        >
+                                            Descargar PDF
+                                        </DropdownItem>
+                                        <DropdownItem
+                                            key="export-excel"
+                                            startContent={<ExportIcon className={iconClasses} />}
+                                            onPress={handleExportToExcel}
+                                        >
+                                            Exportar a Excel
+                                        </DropdownItem>
+                                    </DropdownMenu>
+                                </Dropdown>
+                                <Button
+                                    className="text-black"
+                                    radius="sm"
+                                    size="sm"
+                                    variant="shadow"
+                                    color="warning"
+                                    onPress={handleOpenEditRegistro}
+                                >
+                                    Editar accionista
+                                </Button>
+                            </div>
 
                             {/* Firma del accionista */}
-                            <div className="mt-4 border-t border-dashed border-gray-200 pt-3">
+                            <div className="mt-3 border-t border-dashed border-gray-200 pt-3">
                                 <p className="text-[11px] text-gray-500">Firma accionista</p>
                                 <div className="mt-2 flex flex-col items-center gap-1">
                                     <div className="h-10 w-full max-w-xs rounded-md border border-gray-200 bg-white px-4 py-1.5">
                                         <p className="text-lg font-semibold text-gray-700 italic font-[cursive] tracking-wide">
-                                            {[accionista.nombre, accionista.apellidos]
-                                                .filter(Boolean)
-                                                .join(" ")}
+                                            {
+                                                [accionista.nombre, accionista.apellidos]
+                                                    .filter(Boolean)
+                                                    .join(" ") || "-"
+                                            }
                                         </p>
                                     </div>
                                     <p className="text-[10px] text-gray-400">
@@ -660,8 +1130,8 @@ export function Dashboard() {
                                 <Button
                                     size="sm"
                                     radius="sm"
-                                    variant={isEditMode ? "bordered" : "flat"}
-                                    color={isEditMode ? "warning" : "default"}
+                                    variant={isEditMode ? "solid" : "shadow"}
+                                    color={isEditMode ? "warning" : "primary"}
                                     onPress={() => {
                                         setIsEditMode((prev) => !prev);
                                         setEditingRowId(null);
@@ -1108,7 +1578,9 @@ export function Dashboard() {
                                         }}
                                     >
                                         <ModalHeader className="flex flex-col gap-1">
-                                            Crear registro (página del libro)
+                                            {accionistaId
+                                                ? "Editar registro (página del libro)"
+                                                : "Crear registro (página del libro)"}
                                         </ModalHeader>
                                         <ModalBody>
                                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1238,24 +1710,70 @@ export function Dashboard() {
                                                         }))
                                                     }
                                                 />
-                                                <Input
-                                                    label="Saldo actual"
+                                                <DatePicker
+                                                    label="Fecha defunción"
                                                     variant="bordered"
                                                     classNames={{
                                                         inputWrapper:
-                                                            "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
-                                                        input:
-                                                            "text-black placeholder:!text-black",
+                                                            "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
+                                                        input: "!text-black",
+                                                        innerWrapper: "!text-black",
+                                                        segment: "!text-black data-[placeholder]:!text-black",
                                                         label: "text-gray-700",
                                                     }}
-                                                    value={registroDraft.saldo}
-                                                    onValueChange={(value) =>
-                                                        setRegistroDraft((prev) => ({
-                                                            ...prev,
-                                                            saldo: value,
-                                                        }))
+                                                    className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
+                                                    value={
+                                                        registroDraft.fechaDefuncion
+                                                            ? (() => {
+                                                                  const [year, month, day] = registroDraft.fechaDefuncion.split("-");
+                                                                  if (!year || !month || !day) return null;
+                                                                  return {
+                                                                      year: Number(year),
+                                                                      month: Number(month),
+                                                                      day: Number(day),
+                                                                  } as any;
+                                                              })()
+                                                            : null
                                                     }
+                                                    onChange={(value) => {
+                                                        if (value) {
+                                                            const yyyy = String(value.year).padStart(4, "0");
+                                                            const mm = String(value.month).padStart(2, "0");
+                                                            const dd = String(value.day).padStart(2, "0");
+                                                            const formatted = `${yyyy}-${mm}-${dd}`;
+
+                                                            setRegistroDraft((prev) => ({
+                                                                ...prev,
+                                                                fechaDefuncion: formatted,
+                                                            }));
+                                                        } else {
+                                                            setRegistroDraft((prev) => ({
+                                                                ...prev,
+                                                                fechaDefuncion: "",
+                                                            }));
+                                                        }
+                                                    }}
                                                 />
+                                                {!accionistaId && (
+                                                    <Input
+                                                        label="Saldo actual"
+                                                        variant="bordered"
+                                                        classNames={{
+                                                            inputWrapper:
+                                                                "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
+                                                            input:
+                                                                "text-black placeholder:!text-black",
+                                                            label: "text-gray-700",
+                                                        }}
+                                                        value={registroDraft.saldo}
+                                                        onValueChange={(value) =>
+                                                            setRegistroDraft((prev) => ({
+                                                                ...prev,
+                                                                saldo: value,
+                                                            }))
+                                                        }
+                                                    />
+                                                )}
                                             </div>
                                         </ModalBody>
                                         <ModalFooter>
