@@ -594,30 +594,30 @@ export function Dashboard() {
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">RUT</p>
-                                    <p className="text-sm text-gray-900">{accionista.rut}</p>
+                                    <p className="text-sm text-gray-900">{accionista.rut || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Nacionalidad</p>
-                                    <p className="text-sm text-gray-900">{accionista.nacionalidad}</p>
+                                    <p className="text-sm text-gray-900">{accionista.nacionalidad || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Dirección</p>
-                                    <p className="text-sm text-gray-900">{accionista.direccion}</p>
+                                    <p className="text-sm text-gray-900">{accionista.direccion || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Ciudad</p>
-                                    <p className="text-sm text-gray-900">{accionista.ciudad}</p>
+                                    <p className="text-sm text-gray-900">{accionista.ciudad || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Fono</p>
-                                    <p className="text-sm text-gray-900">{accionista.fono}</p>
+                                    <p className="text-sm text-gray-900">{accionista.fono || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Saldo</p>
                                     <p className="text-sm font-semibold text-gray-900">
                                         {movimientos.length > 0
                                             ? movimientos[movimientos.length - 1].saldo
-                                            : accionista.saldo}
+                                            : accionista.saldo ?? "-"}
                                     </p>
                                 </div>
                             </div>
@@ -751,7 +751,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-sm",
                                                                 }}
                                                                 value={row.fecha}
                                                                 onValueChange={(value) =>
@@ -780,7 +780,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-sm",
                                                                 }}
                                                                 value={row.transferencia}
                                                                 onValueChange={(value) =>
@@ -809,7 +809,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.tituloAnulado}
                                                                 onValueChange={(value) =>
@@ -838,7 +838,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-sm",
                                                                 }}
                                                                 value={row.compradoA}
                                                                 onValueChange={(value) =>
@@ -867,7 +867,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-sm",
                                                                 }}
                                                                 value={row.vendidoA}
                                                                 onValueChange={(value) =>
@@ -896,7 +896,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.tituloNuevoComprador}
                                                                 onValueChange={(value) =>
@@ -925,7 +925,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.tituloNuevoVendedor}
                                                                 onValueChange={(value) =>
@@ -954,7 +954,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.compras}
                                                                 onValueChange={(value) =>
@@ -983,7 +983,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.ventas}
                                                                 onValueChange={(value) =>
@@ -1012,7 +1012,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.saldo}
                                                                 onValueChange={(value) =>
@@ -1041,7 +1041,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.observaciones}
                                                                 onValueChange={(value) =>
@@ -1070,7 +1070,7 @@ export function Dashboard() {
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
-                                                                    input: "text-black placeholder:!text-black text-xs",
+                                                                    input: "text-black placeholder:!text-black text-base",
                                                                 }}
                                                                 value={row.tituloEmitido}
                                                                 onValueChange={(value) =>
