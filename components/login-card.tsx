@@ -67,7 +67,7 @@ export function LoginCard() {
 
     setTimeout(() => {
       router.push("/dashboard");
-    }, 600);
+    }, 300);
   };
 
   return (
