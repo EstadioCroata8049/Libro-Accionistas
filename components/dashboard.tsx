@@ -898,9 +898,19 @@ export function Dashboard() {
             });
 
             setAccionistaId(a.id ?? null);
+            setAccionistaPdfUrl(a.pdf_url ?? null);
             setMovimientos([]);
             setMovimientosPage(0);
             setIsRegistroOpen(false);
+            
+            // Forzar recarga de datos actualizando searchTerm con el RUT del accionista
+            // Esto dispara el useEffect y carga correctamente los movimientos
+            if (a.rut) {
+                setSearchTerm(formatRut(a.rut));
+            } else if (a.nombre) {
+                setSearchTerm(a.nombre);
+            }
+            
             addToast({
                 title: "Registro guardado",
                 description: "El registro del accionista se guardó con éxito.",
