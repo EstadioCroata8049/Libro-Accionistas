@@ -258,6 +258,114 @@ export function Dashboard() {
         }
     };
 
+    const handleExportResumenAccionista = async () => {
+        try {
+            const ExcelJS = await import("exceljs");
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet("Resumen");
+
+            worksheet.columns = [
+                { header: "Nombre", key: "nombre", width: 20 },
+                { header: "Apellidos", key: "apellidos", width: 25 },
+                { header: "RUT", key: "rut", width: 18 },
+                { header: "Nacionalidad", key: "nacionalidad", width: 18 },
+                { header: "Dirección", key: "direccion", width: 30 },
+                { header: "Ciudad", key: "ciudad", width: 18 },
+                { header: "Fono", key: "fono", width: 18 },
+                { header: "Código/observación", key: "codigoObservacion", width: 20 },
+                { header: "Saldo", key: "saldo", width: 15 },
+            ];
+
+            const { data: accionistas, error } = await supabase
+                .from("accionistas")
+                .select("*")
+                .order("nombre", { ascending: true });
+
+            if (error || !accionistas) {
+                console.error("Error cargando accionistas para exportar:", error);
+                addToast({
+                    title: "Error al exportar",
+                    description: "No se pudieron cargar los accionistas.",
+                    color: "danger",
+                    variant: "solid",
+                    timeout: 2000,
+                    shouldShowTimeoutProgress: true,
+                });
+                return;
+            }
+
+            const rows: any[] = [];
+
+            for (const a of accionistas as any[]) {
+                // Obtener último movimiento del accionista (para saldo y observaciones)
+                const { data: movs, error: movError } = await supabase
+                    .from("movimientos")
+                    .select("saldo, observaciones, fecha_transferencia")
+                    .eq("accionista_id", a.id)
+                    .order("fecha_transferencia", { ascending: false })
+                    .limit(1);
+
+                if (movError) {
+                    console.error("Error cargando movimientos para exportar:", movError);
+                }
+
+                const ultimoMov = movs && movs.length > 0 ? movs[0] : null;
+
+                const saldoFinal =
+                    ultimoMov?.saldo != null
+                        ? ultimoMov.saldo
+                        : a.saldo_acciones != null
+                            ? a.saldo_acciones
+                            : null;
+
+                rows.push({
+                    nombre: a.nombre || "-",
+                    apellidos: a.apellidos || "-",
+                    rut: a.rut ? formatRut(String(a.rut)) : "-",
+                    nacionalidad: a.nacionalidad || "-",
+                    direccion: a.direccion || "-",
+                    ciudad: a.ciudad || "-",
+                    fono: a.fono ? formatPhone(String(a.fono)) : "-",
+                    codigoObservacion: ultimoMov?.observaciones || "",
+                    saldo: saldoFinal ?? "",
+                });
+            }
+
+            worksheet.addRows(rows);
+
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFE0E0E0" },
+            };
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {
+                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+
+            link.download = "accionistas_resumen_total.xlsx";
+
+            link.click();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error exportando resumen:", error);
+            addToast({
+                title: "Error al exportar",
+                description: "No se pudo generar el archivo Excel.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+        }
+    };
+
     const handlePdfChange = async (event: any) => {
         const file = event.target.files?.[0];
 
@@ -1283,6 +1391,15 @@ export function Dashboard() {
                                     }}
                                 >
                                     {isEditMode ? "Salir de edición" : "Editar"}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    radius="sm"
+                                    variant="bordered"
+                                    color="primary"
+                                    onPress={handleExportResumenAccionista}
+                                >
+                                    Exportar total
                                 </Button>
                                 <p>
                                     Total registros: <span className="font-semibold text-gray-800">{movimientos.length}</span>
