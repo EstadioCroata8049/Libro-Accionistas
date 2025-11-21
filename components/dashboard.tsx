@@ -629,17 +629,56 @@ export function Dashboard() {
             if (trimmed.length > 0) {
                 // Limpiar el RUT para buscar sin formato
                 const cleanedRut = cleanRut(trimmed);
+                
+                // Buscar en todos los campos de forma flexible (case-insensitive, parcial)
+                // ilike busca sin importar mayúsculas/minúsculas
                 accionistasQuery = accionistasQuery.or(
                     `rut.ilike.%${cleanedRut}%,nombre.ilike.%${trimmed}%,apellidos.ilike.%${trimmed}%`,
                 );
             }
 
             const { data: accionistas, error } = await accionistasQuery
-                .order("nombre", { ascending: true })
-                .limit(1);
+                .limit(100); // Traer hasta 100 resultados para luego filtrar el mejor match
 
             if (!error && accionistas && accionistas.length > 0) {
-                const a: any = accionistas[0];
+                // Encontrar el mejor match basado en relevancia
+                let bestMatch = accionistas[0];
+                
+                if (trimmed.length > 0 && accionistas.length > 1) {
+                    const lowerTrimmed = trimmed.toLowerCase();
+                    const cleanedRut = cleanRut(trimmed);
+                    
+                    // Calcular score de relevancia para cada accionista
+                    const scored = accionistas.map((acc: any) => {
+                        let score = 0;
+                        const nombre = (acc.nombre || "").toLowerCase();
+                        const apellidos = (acc.apellidos || "").toLowerCase();
+                        const rut = cleanRut(acc.rut || "");
+                        
+                        // Match exacto tiene mayor prioridad
+                        if (nombre === lowerTrimmed) score += 100;
+                        if (apellidos === lowerTrimmed) score += 100;
+                        if (rut === cleanedRut) score += 100;
+                        
+                        // Match al inicio tiene prioridad media
+                        if (nombre.startsWith(lowerTrimmed)) score += 50;
+                        if (apellidos.startsWith(lowerTrimmed)) score += 50;
+                        if (rut.startsWith(cleanedRut)) score += 50;
+                        
+                        // Match parcial tiene menor prioridad
+                        if (nombre.includes(lowerTrimmed)) score += 10;
+                        if (apellidos.includes(lowerTrimmed)) score += 10;
+                        if (rut.includes(cleanedRut)) score += 10;
+                        
+                        return { acc, score };
+                    });
+                    
+                    // Ordenar por score descendente y tomar el mejor
+                    scored.sort((a, b) => b.score - a.score);
+                    bestMatch = scored[0].acc;
+                }
+                
+                const a: any = bestMatch;
 
                 setAccionista({
                     nombre: a.nombre ?? "",
@@ -741,6 +780,8 @@ export function Dashboard() {
     }, [searchTerm, movimientosPage]);
 
     const handleOpenCreateRegistro = () => {
+        // Limpiar accionistaId para asegurar que se cree un nuevo registro
+        setAccionistaId(null);
         setRegistroDraft({
             nombre: "",
             apellidos: "",
