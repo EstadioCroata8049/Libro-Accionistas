@@ -8,7 +8,7 @@ import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
-import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, ToastProvider, addToast } from "@heroui/react";
+import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spinner, ToastProvider, addToast } from "@heroui/react";
 import { CalendarDate } from "@internationalized/date";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -96,6 +96,89 @@ const ExportIcon = (props: any) => {
     );
 };
 
+// Función para formatear RUT chileno: XX.XXX.XXX-X
+const formatRut = (value: string): string => {
+    // Remover todo excepto números y K/k
+    let cleaned = value.replace(/[^0-9kK]/g, "");
+    
+    // Separar números y letras
+    const numbers = cleaned.replace(/[kK]/g, "");
+    const hasK = /[kK]/.test(cleaned);
+    
+    // El cuerpo solo puede tener números (máximo 8)
+    const body = numbers.slice(0, 8);
+    
+    // El dígito verificador puede ser número o K (solo si hay números antes)
+    let dv = "";
+    if (body.length > 0) {
+        if (hasK) {
+            dv = "K";
+        } else if (numbers.length > body.length) {
+            dv = numbers.slice(body.length, body.length + 1);
+        }
+    }
+    
+    if (body.length === 0) return "";
+    if (dv === "") return body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    
+    // Formatear el cuerpo con puntos
+    const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    
+    return `${formattedBody}-${dv}`;
+};
+
+// Función para limpiar RUT (quitar formato, dejar solo números y dígito verificador)
+const cleanRut = (value: string): string => {
+    return value.replace(/[^0-9kK]/g, "");
+};
+
+// Función para formatear teléfono chileno: +569 XXXX XXXX
+const formatPhone = (value: string): string => {
+    // Si el valor está vacío o es solo el prefijo, devolver el prefijo
+    if (!value || value === "+569" || value === "+569 ") {
+        return "+569 ";
+    }
+    
+    // Remover todo excepto números
+    const cleaned = value.replace(/[^0-9]/g, "");
+    
+    // Si está vacío después de limpiar, devolver el prefijo
+    if (cleaned.length === 0) return "+569 ";
+    
+    // Si empieza con 569, usar esos dígitos
+    let numbers = cleaned;
+    if (cleaned.startsWith("569")) {
+        numbers = cleaned.slice(3);
+    } else if (cleaned.startsWith("56")) {
+        numbers = cleaned.slice(2);
+    } else if (cleaned.startsWith("9")) {
+        numbers = cleaned.slice(1);
+    }
+    
+    // Limitar a 8 dígitos después del prefijo
+    numbers = numbers.slice(0, 8);
+    
+    if (numbers.length === 0) return "+569 ";
+    
+    // Formatear: +569 XXXX XXXX
+    if (numbers.length <= 4) {
+        return `+569 ${numbers}`;
+    } else {
+        return `+569 ${numbers.slice(0, 4)} ${numbers.slice(4)}`;
+    }
+};
+
+// Función para limpiar teléfono (quitar formato, dejar solo números)
+const cleanPhone = (value: string): string => {
+    const cleaned = value.replace(/[^0-9]/g, "");
+    // Si empieza con 569, devolverlo completo
+    if (cleaned.startsWith("569")) {
+        return cleaned;
+    }
+    // Si no, agregar el prefijo 569
+    return cleaned.length > 0 ? `569${cleaned}` : "";
+};
+
 const emptyMovimiento = {
     fecha: "",
     transferencia: "",
@@ -155,6 +238,7 @@ export function Dashboard() {
     const [isEditMode, setIsEditMode] = useState(false);
     const [registroSaving, setRegistroSaving] = useState(false);
     const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
+    const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
 
     const handleOpenPdfPicker = () => {
         if (!accionistaId) {
@@ -224,6 +308,7 @@ export function Dashboard() {
         }
 
         try {
+            setIsDocumentsLoading(true);
             // Nombre del archivo en Storage: accionista_{id}.pdf
             const fileName = `accionista_${accionistaId}.pdf`;
             const filePath = `${fileName}`;
@@ -250,12 +335,26 @@ export function Dashboard() {
                 return;
             }
 
-            // Obtener URL pública del archivo
-            const { data: urlData } = supabase.storage
+            // Obtener URL firmada del archivo (válida por 1 año para bucket privado)
+            const { data: urlData, error: urlError } = await supabase.storage
                 .from("documentos")
-                .getPublicUrl(filePath);
+                .createSignedUrl(filePath, 31536000); // 1 año en segundos
 
-            const publicUrl = urlData.publicUrl;
+            if (urlError || !urlData) {
+                console.error("Error generando URL:", urlError);
+                addToast({
+                    title: "Error al generar URL",
+                    description: "No se pudo generar la URL del PDF.",
+                    color: "danger",
+                    variant: "solid",
+                    timeout: 2000,
+                    shouldShowTimeoutProgress: true,
+                });
+                event.target.value = "";
+                return;
+            }
+
+            const publicUrl = urlData.signedUrl;
 
             // Actualizar la tabla accionistas con la URL del PDF
             const { error: updateError } = await supabase
@@ -296,6 +395,8 @@ export function Dashboard() {
                 timeout: 2000,
                 shouldShowTimeoutProgress: true,
             });
+        } finally {
+            setIsDocumentsLoading(false);
         }
 
         event.target.value = "";
@@ -339,26 +440,36 @@ export function Dashboard() {
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet("Accionista");
 
-            // Definir columnas
+            // Definir columnas: un campo por columna
             worksheet.columns = [
-                { header: "Campo", key: "campo", width: 20 },
-                { header: "Valor", key: "valor", width: 40 },
+                { header: "Nombre", key: "nombre", width: 20 },
+                { header: "Apellidos", key: "apellidos", width: 25 },
+                { header: "RUT", key: "rut", width: 18 },
+                { header: "Nacionalidad", key: "nacionalidad", width: 18 },
+                { header: "Dirección", key: "direccion", width: 30 },
+                { header: "Ciudad", key: "ciudad", width: 18 },
+                { header: "Fono", key: "fono", width: 18 },
+                { header: "Fecha defunción", key: "fechaDefuncion", width: 18 },
+                { header: "Saldo", key: "saldo", width: 15 },
             ];
 
-            // Agregar datos del accionista (sin firma)
-            worksheet.addRow({ campo: "Nombre", valor: accionista.nombre || "-" });
-            worksheet.addRow({ campo: "Apellidos", valor: accionista.apellidos || "-" });
-            worksheet.addRow({ campo: "RUT", valor: accionista.rut || "-" });
-            worksheet.addRow({ campo: "Nacionalidad", valor: accionista.nacionalidad || "-" });
-            worksheet.addRow({ campo: "Dirección", valor: accionista.direccion || "-" });
-            worksheet.addRow({ campo: "Ciudad", valor: accionista.ciudad || "-" });
-            worksheet.addRow({ campo: "Fono", valor: accionista.fono || "-" });
-            worksheet.addRow({ campo: "Fecha defunción", valor: accionista.fechaDefuncion || "-" });
-            worksheet.addRow({
-                campo: "Saldo",
-                valor: movimientos.length > 0
+            // Calcular saldo final
+            const saldoFinal =
+                movimientos.length > 0
                     ? movimientos[movimientos.length - 1].saldo
-                    : accionista.saldo ?? "-",
+                    : accionista.saldo ?? "-";
+
+            // Agregar una sola fila con los valores del accionista (sin firma)
+            worksheet.addRow({
+                nombre: accionista.nombre || "-",
+                apellidos: accionista.apellidos || "-",
+                rut: accionista.rut || "-",
+                nacionalidad: accionista.nacionalidad || "-",
+                direccion: accionista.direccion || "-",
+                ciudad: accionista.ciudad || "-",
+                fono: accionista.fono || "-",
+                fechaDefuncion: accionista.fechaDefuncion || "-",
+                saldo: saldoFinal,
             });
 
             // Estilo del encabezado
@@ -408,8 +519,10 @@ export function Dashboard() {
 
             const trimmed = searchTerm.trim();
             if (trimmed.length > 0) {
+                // Limpiar el RUT para buscar sin formato
+                const cleanedRut = cleanRut(trimmed);
                 accionistasQuery = accionistasQuery.or(
-                    `rut.ilike.%${trimmed}%,nombre.ilike.%${trimmed}%,apellidos.ilike.%${trimmed}%`,
+                    `rut.ilike.%${cleanedRut}%,nombre.ilike.%${trimmed}%,apellidos.ilike.%${trimmed}%`,
                 );
             }
 
@@ -423,11 +536,11 @@ export function Dashboard() {
                 setAccionista({
                     nombre: a.nombre ?? "",
                     apellidos: a.apellidos ?? "",
-                    rut: a.rut ?? "",
+                    rut: a.rut ? formatRut(a.rut) : "",
                     nacionalidad: a.nacionalidad ?? "",
                     direccion: a.direccion ?? "",
                     ciudad: a.ciudad ?? "",
-                    fono: a.fono ?? "",
+                    fono: a.fono ? formatPhone(a.fono) : "",
                     fechaDefuncion:
                         a.fecha_defuncion
                             ? (() => {
@@ -527,7 +640,7 @@ export function Dashboard() {
             nacionalidad: "",
             direccion: "",
             ciudad: "",
-            fono: "",
+            fono: "+569 ",
             fechaDefuncion: "",
             saldo: "",
             firma: "",
@@ -574,7 +687,7 @@ export function Dashboard() {
             nacionalidad: accionista.nacionalidad || "",
             direccion: accionista.direccion || "",
             ciudad: accionista.ciudad || "",
-            fono: accionista.fono || "",
+            fono: accionista.fono || "+569 ",
             fechaDefuncion: fechaDefuncionIso,
             saldo: saldoSoloNumero,
             firma: accionista.firma || "",
@@ -599,26 +712,42 @@ export function Dashboard() {
                 nacionalidad: registroDraft.nacionalidad || null,
                 direccion: registroDraft.direccion || null,
                 ciudad: registroDraft.ciudad || null,
-                fono: registroDraft.fono || null,
+                fono: registroDraft.fono ? cleanPhone(registroDraft.fono) : null,
                 fecha_defuncion: registroDraft.fechaDefuncion || null,
                 saldo_acciones: saldoNumber,
                 firma: registroDraft.firma || null,
             };
 
             if (registroDraft.rut && registroDraft.rut.trim().length > 0) {
-                payload.rut = registroDraft.rut.trim();
+                // Limpiar el RUT antes de guardarlo (sin puntos ni guión)
+                payload.rut = cleanRut(registroDraft.rut);
             }
 
-            const upsertOptions =
-                registroDraft.rut && registroDraft.rut.trim().length > 0
-                    ? { onConflict: "rut" as const }
-                    : {};
+            let data: any = null;
+            let error: any = null;
 
-            const { data, error } = await supabase
-                .from("accionistas")
-                .upsert(payload, upsertOptions)
-                .select("*")
-                .single();
+            if (accionistaId) {
+                // Modo edición: actualizar registro existente por id
+                const response = await supabase
+                    .from("accionistas")
+                    .update(payload)
+                    .eq("id", accionistaId)
+                    .select("*")
+                    .single();
+
+                data = response.data;
+                error = response.error;
+            } else {
+                // Modo creación: insertar nuevo registro
+                const response = await supabase
+                    .from("accionistas")
+                    .insert(payload)
+                    .select("*")
+                    .single();
+
+                data = response.data;
+                error = response.error;
+            }
 
             if (error || !data) {
                 console.error("Error Supabase accionistas:", error);
@@ -638,11 +767,11 @@ export function Dashboard() {
             setAccionista({
                 nombre: a.nombre ?? "",
                 apellidos: a.apellidos ?? "",
-                rut: a.rut ?? "",
+                rut: a.rut ? formatRut(a.rut) : "",
                 nacionalidad: a.nacionalidad ?? "",
                 direccion: a.direccion ?? "",
                 ciudad: a.ciudad ?? "",
-                fono: a.fono ?? "",
+                fono: a.fono ? formatPhone(a.fono) : "",
                 fechaDefuncion:
                     a.fecha_defuncion
                         ? (() => {
@@ -942,7 +1071,14 @@ export function Dashboard() {
                                         input: "text-black placeholder:text-gray-400",
                                     }}
                                     value={searchTerm}
-                                    onValueChange={setSearchTerm}
+                                    onValueChange={(value) => {
+                                        // Si parece un RUT (contiene números), formatearlo
+                                        if (/\d/.test(value)) {
+                                            setSearchTerm(formatRut(value));
+                                        } else {
+                                            setSearchTerm(value);
+                                        }
+                                    }}
                                 />
                                 <div className="flex gap-2 md:flex-none">
                                     <Button
@@ -1039,7 +1175,7 @@ export function Dashboard() {
                                 </div>
                             </div>
                             <div className="mt-2 flex justify-end gap-2">
-                                <Dropdown>
+                                <Dropdown isDisabled={isDocumentsLoading}>
                                     <DropdownTrigger>
                                         <Button
                                             radius="sm"
@@ -1047,7 +1183,14 @@ export function Dashboard() {
                                             variant="shadow"
                                             color="primary"
                                         >
-                                            Documentos
+                                            {isDocumentsLoading ? (
+                                                <div className="flex items-center gap-2">
+                                                    <Spinner size="sm" color="white" />
+                                                    <span>Procesando...</span>
+                                                </div>
+                                            ) : (
+                                                "Documentos"
+                                            )}
                                         </Button>
                                     </DropdownTrigger>
                                     <DropdownMenu
@@ -1623,20 +1766,22 @@ export function Dashboard() {
                                                 <Input
                                                     label="RUT"
                                                     variant="bordered"
+                                                    placeholder="Ej: 12.345.678-9"
                                                     classNames={{
                                                         inputWrapper:
                                                             "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
                                                         input:
-                                                            "text-black placeholder:!text-black",
+                                                            "text-black placeholder:!text-grey",
                                                         label: "text-gray-700",
                                                     }}
                                                     value={registroDraft.rut}
-                                                    onValueChange={(value) =>
+                                                    onValueChange={(value) => {
+                                                        const formatted = formatRut(value);
                                                         setRegistroDraft((prev) => ({
                                                             ...prev,
-                                                            rut: value,
-                                                        }))
-                                                    }
+                                                            rut: formatted,
+                                                        }));
+                                                    }}
                                                 />
                                                 <Input
                                                     label="Nacionalidad"
@@ -1699,16 +1844,39 @@ export function Dashboard() {
                                                         inputWrapper:
                                                             "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
                                                         input:
-                                                            "text-black placeholder:!text-black",
+                                                            "text-black",
                                                         label: "text-gray-700",
                                                     }}
-                                                    value={registroDraft.fono}
-                                                    onValueChange={(value) =>
+                                                    value={registroDraft.fono || "+569 "}
+                                                    onValueChange={(value) => {
+                                                        // No permitir borrar el prefijo +569
+                                                        if (!value.startsWith("+569")) {
+                                                            setRegistroDraft((prev) => ({
+                                                                ...prev,
+                                                                fono: "+569 ",
+                                                            }));
+                                                            return;
+                                                        }
+                                                        const formatted = formatPhone(value);
                                                         setRegistroDraft((prev) => ({
                                                             ...prev,
-                                                            fono: value,
-                                                        }))
-                                                    }
+                                                            fono: formatted,
+                                                        }));
+                                                    }}
+                                                    onFocus={(e) => {
+                                                        // Si el campo está vacío o solo tiene el prefijo, posicionar cursor al final
+                                                        if (!registroDraft.fono || registroDraft.fono === "+569 ") {
+                                                            setRegistroDraft((prev) => ({
+                                                                ...prev,
+                                                                fono: "+569 ",
+                                                            }));
+                                                            // Posicionar cursor al final
+                                                            setTimeout(() => {
+                                                                const input = e.target as HTMLInputElement;
+                                                                input.setSelectionRange(5, 5);
+                                                            }, 0);
+                                                        }
+                                                    }}
                                                 />
                                                 <DatePicker
                                                     label="Fecha defunción"
