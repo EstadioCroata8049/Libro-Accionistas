@@ -8,7 +8,7 @@ import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/table";
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
-import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spinner, ToastProvider, addToast } from "@heroui/react";
+import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spinner, ToastProvider, addToast, Checkbox } from "@heroui/react";
 import { CalendarDate } from "@internationalized/date";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -200,6 +200,7 @@ const emptyAccionista = {
     nacionalidad: "-",
     direccion: "-",
     ciudad: "-",
+    registro: "-",
     fono: "-",
     fechaDefuncion: "-",
     saldo: "-",
@@ -224,8 +225,10 @@ export function Dashboard() {
         nacionalidad: "",
         direccion: "",
         ciudad: "",
+        registro: "",
         fono: "",
         fechaDefuncion: "",
+        fallecido: false,
         saldo: "",
         firma: "",
     });
@@ -237,6 +240,7 @@ export function Dashboard() {
     const [isConfirmEditOpen, setIsConfirmEditOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [registroSaving, setRegistroSaving] = useState(false);
+    const [isExportTotalLoading, setIsExportTotalLoading] = useState(false);
     const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
     const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
 
@@ -260,21 +264,24 @@ export function Dashboard() {
 
     const handleExportResumenAccionista = async () => {
         try {
+            setIsExportTotalLoading(true);
             const ExcelJS = await import("exceljs");
 
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet("Resumen");
 
+            // Columnas solicitadas:
+            // 1) Registro
+            // 2) Accionista (APELLIDOS + NOMBRES)
+            // 3) RUT
+            // 4) Fallecido (solo si tiene fecha de defunción)
+            // 5) Saldo total
             worksheet.columns = [
-                { header: "Nombre", key: "nombre", width: 20 },
-                { header: "Apellidos", key: "apellidos", width: 25 },
+                { header: "Registro", key: "registro", width: 14 },
+                { header: "Accionista", key: "accionista", width: 32 },
                 { header: "RUT", key: "rut", width: 18 },
-                { header: "Nacionalidad", key: "nacionalidad", width: 18 },
-                { header: "Dirección", key: "direccion", width: 30 },
-                { header: "Ciudad", key: "ciudad", width: 18 },
-                { header: "Fono", key: "fono", width: 18 },
-                { header: "Código/observación", key: "codigoObservacion", width: 20 },
-                { header: "Saldo", key: "saldo", width: 15 },
+                { header: "Fallecido", key: "fallecido", width: 12 },
+                { header: "Saldo total", key: "saldo", width: 16 },
             ];
 
             const { data: accionistas, error } = await supabase
@@ -319,15 +326,17 @@ export function Dashboard() {
                             ? a.saldo_acciones
                             : null;
 
+                const fallecido = a.fecha_defuncion ? "Fallecido" : "";
+
                 rows.push({
-                    nombre: a.nombre || "-",
-                    apellidos: a.apellidos || "-",
+                    registro: a.registro || "-",
+                    accionista:
+                        [a.apellidos, a.nombre]
+                            .map((v: any) => v || "")
+                            .filter((v: string) => v.trim().length > 0)
+                            .join(" ") || "-",
                     rut: a.rut ? formatRut(String(a.rut)) : "-",
-                    nacionalidad: a.nacionalidad || "-",
-                    direccion: a.direccion || "-",
-                    ciudad: a.ciudad || "-",
-                    fono: a.fono ? formatPhone(String(a.fono)) : "-",
-                    codigoObservacion: ultimoMov?.observaciones || "",
+                    fallecido,
                     saldo: saldoFinal ?? "",
                 });
             }
@@ -341,6 +350,23 @@ export function Dashboard() {
                 fgColor: { argb: "FFE0E0E0" },
             };
 
+            // Agregar filas informativas al final: fecha de exportación y total de accionistas
+            const now = new Date();
+            const dd = String(now.getDate()).padStart(2, "0");
+            const mm = String(now.getMonth() + 1).padStart(2, "0");
+            const yyyy = now.getFullYear();
+            const fechaExport = `${dd}-${mm}-${yyyy}`;
+
+            const infoRowFecha = worksheet.addRow({
+                registro: `Fecha de exportación: ${fechaExport}`,
+            });
+            infoRowFecha.font = { italic: true };
+
+            const totalRow = worksheet.addRow({
+                registro: `Total accionistas: ${rows.length}`,
+            });
+            totalRow.font = { italic: true };
+
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], {
                 type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -349,7 +375,8 @@ export function Dashboard() {
             const link = document.createElement("a");
             link.href = url;
 
-            link.download = "accionistas_resumen_total.xlsx";
+            // Incluir fecha en el nombre del archivo
+            link.download = `accionistas_resumen_total_${yyyy}${mm}${dd}.xlsx`;
 
             link.click();
             window.URL.revokeObjectURL(url);
@@ -363,6 +390,9 @@ export function Dashboard() {
                 timeout: 2000,
                 shouldShowTimeoutProgress: true,
             });
+        }
+        finally {
+            setIsExportTotalLoading(false);
         }
     };
 
@@ -556,8 +586,10 @@ export function Dashboard() {
                 { header: "Nacionalidad", key: "nacionalidad", width: 18 },
                 { header: "Dirección", key: "direccion", width: 30 },
                 { header: "Ciudad", key: "ciudad", width: 18 },
+                { header: "Registro", key: "registro", width: 14 },
                 { header: "Fono", key: "fono", width: 18 },
                 { header: "Fecha defunción", key: "fechaDefuncion", width: 18 },
+                { header: "Fallecido", key: "fallecido", width: 12 },
                 { header: "Saldo", key: "saldo", width: 15 },
             ];
 
@@ -575,8 +607,10 @@ export function Dashboard() {
                 nacionalidad: accionista.nacionalidad || "-",
                 direccion: accionista.direccion || "-",
                 ciudad: accionista.ciudad || "-",
+                registro: accionista.registro || "-",
                 fono: accionista.fono || "-",
                 fechaDefuncion: accionista.fechaDefuncion || "-",
+                fallecido: accionista.fechaDefuncion && accionista.fechaDefuncion !== "-" ? "Fallecido" : "",
                 saldo: saldoFinal,
             });
 
@@ -687,6 +721,7 @@ export function Dashboard() {
                     nacionalidad: a.nacionalidad ?? "",
                     direccion: a.direccion ?? "",
                     ciudad: a.ciudad ?? "",
+                    registro: a.registro ?? "-",
                     fono: a.fono ? formatPhone(a.fono) : "",
                     fechaDefuncion:
                         a.fecha_defuncion
@@ -789,8 +824,10 @@ export function Dashboard() {
             nacionalidad: "",
             direccion: "",
             ciudad: "",
+            registro: "",
             fono: "+569 ",
             fechaDefuncion: "",
+            fallecido: false,
             saldo: "",
             firma: "",
         });
@@ -836,8 +873,10 @@ export function Dashboard() {
             nacionalidad: accionista.nacionalidad || "",
             direccion: accionista.direccion || "",
             ciudad: accionista.ciudad || "",
+            registro: accionista.registro || "",
             fono: accionista.fono || "+569 ",
             fechaDefuncion: fechaDefuncionIso,
+            fallecido: !!fechaDefuncionIso,
             saldo: saldoSoloNumero,
             firma: accionista.firma || "",
         });
@@ -861,6 +900,7 @@ export function Dashboard() {
                 nacionalidad: registroDraft.nacionalidad || null,
                 direccion: registroDraft.direccion || null,
                 ciudad: registroDraft.ciudad || null,
+                registro: registroDraft.registro || null,
                 fono: registroDraft.fono ? cleanPhone(registroDraft.fono) : null,
                 fecha_defuncion: registroDraft.fechaDefuncion || null,
                 saldo_acciones: saldoNumber,
@@ -920,6 +960,7 @@ export function Dashboard() {
                 nacionalidad: a.nacionalidad ?? "",
                 direccion: a.direccion ?? "",
                 ciudad: a.ciudad ?? "",
+                registro: a.registro ?? "-",
                 fono: a.fono ? formatPhone(a.fono) : "",
                 fechaDefuncion:
                     a.fecha_defuncion
@@ -1315,6 +1356,10 @@ export function Dashboard() {
                                     <p className="text-sm text-gray-900">{accionista.ciudad || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
+                                    <p className="text-[11px] text-gray-500">Registro</p>
+                                    <p className="text-sm text-gray-900">{accionista.registro || "-"}</p>
+                                </div>
+                                <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Fono</p>
                                     <p className="text-sm text-gray-900">{accionista.fono || "-"}</p>
                                 </div>
@@ -1427,7 +1472,7 @@ export function Dashboard() {
                                     color="primary"
                                     onPress={handleOpenMovimiento}
                                 >
-                                    Agregar movimiento
+                                    Agregar traspaso
                                 </Button>
                                 <Button
                                     size="sm"
@@ -1448,9 +1493,17 @@ export function Dashboard() {
                                     radius="sm"
                                     variant="bordered"
                                     color="primary"
+                                    isDisabled={isExportTotalLoading}
                                     onPress={handleExportResumenAccionista}
                                 >
-                                    Exportar total
+                                    {isExportTotalLoading ? (
+                                        <div className="flex items-center gap-2">
+                                            <Spinner size="sm" />
+                                            <span>Exportando...</span>
+                                        </div>
+                                    ) : (
+                                        "Exportar total"
+                                    )}
                                 </Button>
                                 <p>
                                     Total registros: <span className="font-semibold text-gray-800">{movimientos.length}</span>
@@ -2006,110 +2059,115 @@ export function Dashboard() {
                                                     }
                                                 />
                                                 <Input
-                                                    label="Fono"
+                                                    label="Registro"
                                                     variant="bordered"
                                                     classNames={{
                                                         inputWrapper:
                                                             "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
                                                         input:
-                                                            "text-black",
+                                                            "text-black placeholder:!text-black",
                                                         label: "text-gray-700",
                                                     }}
-                                                    value={registroDraft.fono || "+569 "}
-                                                    onValueChange={(value) => {
-                                                        // No permitir borrar el prefijo +569
-                                                        if (!value.startsWith("+569")) {
-                                                            setRegistroDraft((prev) => ({
-                                                                ...prev,
-                                                                fono: "+569 ",
-                                                            }));
-                                                            return;
-                                                        }
-                                                        const formatted = formatPhone(value);
+                                                    value={registroDraft.registro}
+                                                    onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
                                                             ...prev,
-                                                            fono: formatted,
-                                                        }));
-                                                    }}
-                                                    onFocus={(e) => {
-                                                        // Si el campo está vacío o solo tiene el prefijo, posicionar cursor al final
-                                                        if (!registroDraft.fono || registroDraft.fono === "+569 ") {
-                                                            setRegistroDraft((prev) => ({
-                                                                ...prev,
-                                                                fono: "+569 ",
-                                                            }));
-                                                            // Posicionar cursor al final
-                                                            setTimeout(() => {
-                                                                const input = e.target as HTMLInputElement;
-                                                                input.setSelectionRange(5, 5);
-                                                            }, 0);
-                                                        }
-                                                    }}
-                                                />
-                                                <DatePicker
-                                                    label="Fecha defunción"
-                                                    variant="bordered"
-                                                    classNames={{
-                                                        inputWrapper:
-                                                            "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
-                                                        input: "!text-black",
-                                                        innerWrapper: "!text-black",
-                                                        segment: "!text-black data-[placeholder]:!text-black",
-                                                        label: "text-gray-700",
-                                                    }}
-                                                    className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
-                                                    value={
-                                                        registroDraft.fechaDefuncion
-                                                            ? (() => {
-                                                                  const [year, month, day] = registroDraft.fechaDefuncion.split("-");
-                                                                  if (!year || !month || !day) return null;
-                                                                  return {
-                                                                      year: Number(year),
-                                                                      month: Number(month),
-                                                                      day: Number(day),
-                                                                  } as any;
-                                                              })()
-                                                            : null
+                                                            registro: value,
+                                                        }))
                                                     }
-                                                    onChange={(value) => {
-                                                        if (value) {
-                                                            const yyyy = String(value.year).padStart(4, "0");
-                                                            const mm = String(value.month).padStart(2, "0");
-                                                            const dd = String(value.day).padStart(2, "0");
-                                                            const formatted = `${yyyy}-${mm}-${dd}`;
-
-                                                            setRegistroDraft((prev) => ({
-                                                                ...prev,
-                                                                fechaDefuncion: formatted,
-                                                            }));
-                                                        } else {
-                                                            setRegistroDraft((prev) => ({
-                                                                ...prev,
-                                                                fechaDefuncion: "",
-                                                            }));
-                                                        }
-                                                    }}
                                                 />
-                                                {!accionistaId && (
+                                                <div>
                                                     <Input
-                                                        label="Saldo actual"
+                                                        label="Fono"
                                                         variant="bordered"
                                                         classNames={{
                                                             inputWrapper:
                                                                 "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
                                                             input:
-                                                                "text-black placeholder:!text-black",
+                                                                "text-black",
                                                             label: "text-gray-700",
                                                         }}
-                                                        value={registroDraft.saldo}
-                                                        onValueChange={(value) =>
+                                                        value={registroDraft.fono || "+569 "}
+                                                        onValueChange={(value) => {
+                                                            // No permitir borrar el prefijo +569
+                                                            if (!value.startsWith("+569")) {
+                                                                setRegistroDraft((prev) => ({
+                                                                    ...prev,
+                                                                    fono: "+569 ",
+                                                                }));
+                                                                return;
+                                                            }
+                                                            const formatted = formatPhone(value);
                                                             setRegistroDraft((prev) => ({
                                                                 ...prev,
-                                                                saldo: value,
-                                                            }))
-                                                        }
+                                                                fono: formatted,
+                                                            }));
+                                                        }}
                                                     />
-                                                )}
+                                                </div>
+                                                <div className="sm:col-span-2 flex flex-col gap-2">
+                                                    <div className="flex justify-start">
+                                                        <Checkbox
+                                                            classNames={{ label: "text-black" }}
+                                                            isSelected={registroDraft.fallecido}
+                                                            onValueChange={(selected) => {
+                                                                setRegistroDraft((prev) => ({
+                                                                    ...prev,
+                                                                    fallecido: selected,
+                                                                    fechaDefuncion: selected ? prev.fechaDefuncion : "",
+                                                                }));
+                                                            }}
+                                                        >
+                                                            Fallecido
+                                                        </Checkbox>
+                                                    </div>
+                                                    {registroDraft.fallecido && (
+                                                        <DatePicker
+                                                            label="Fecha defunción (opcional)"
+                                                            variant="bordered"
+                                                            classNames={{
+                                                                inputWrapper:
+                                                                    "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
+                                                                input: "!text-black",
+                                                                innerWrapper: "!text-black",
+                                                                segment: "!text-black data-[placeholder]:!text-black",
+                                                                label: "text-gray-700",
+                                                            }}
+                                                            className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
+                                                            value={
+                                                                registroDraft.fechaDefuncion
+                                                                    ? (() => {
+                                                                          const [year, month, day] = registroDraft.fechaDefuncion.split("-");
+                                                                          if (!year || !month || !day) return null;
+                                                                          return {
+                                                                              year: Number(year),
+                                                                              month: Number(month),
+                                                                              day: Number(day),
+                                                                          } as any;
+                                                                      })()
+                                                                    : null
+                                                            }
+                                                            onChange={(value) => {
+                                                                if (value) {
+                                                                    const yyyy = String(value.year).padStart(4, "0");
+                                                                    const mm = String(value.month).padStart(2, "0");
+                                                                    const dd = String(value.day).padStart(2, "0");
+                                                                    const formatted = `${yyyy}-${mm}-${dd}`;
+
+                                                                    setRegistroDraft((prev) => ({
+                                                                        ...prev,
+                                                                        fechaDefuncion: formatted,
+                                                                    }));
+                                                                } else {
+                                                                    setRegistroDraft((prev) => ({
+                                                                        ...prev,
+                                                                        fechaDefuncion: "",
+                                                                    }));
+                                                                }
+                                                            }}
+                                                        />
+                                                    )}
+                                                </div>
                                             </div>
                                         </ModalBody>
                                         <ModalFooter>
