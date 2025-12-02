@@ -18,6 +18,7 @@ interface ActivityLog {
   action: string;
   entity_type: string;
   entity_name: string;
+  changes: string | null;
   created_at: string;
 }
 
@@ -35,8 +36,12 @@ const getActionLabel = (action: string): string => {
   switch (action) {
     case "crear_accionista":
       return "Creó accionista";
+    case "editar_accionista":
+      return "Editó accionista";
     case "crear_traspaso":
       return "Creó traspaso";
+    case "editar_traspaso":
+      return "Editó traspaso";
     default:
       return action;
   }
@@ -75,7 +80,7 @@ export default function ActivityLogsPage() {
     // Usar count: 'exact' solo en primera carga para obtener total
     const query = supabase
       .from("activity_logs")
-      .select("id, user_name, action, entity_type, entity_name, created_at", 
+      .select("id, user_name, action, entity_type, entity_name, changes, created_at", 
         page === 1 ? { count: "exact" } : { count: "planned" }
       )
       .order("created_at", { ascending: false })
@@ -171,6 +176,7 @@ export default function ActivityLogsPage() {
                   <TableColumn>ACCIÓN</TableColumn>
                   <TableColumn>TIPO</TableColumn>
                   <TableColumn>DETALLE</TableColumn>
+                  <TableColumn>CAMBIOS</TableColumn>
                 </TableHeader>
                 <TableBody>
                   {logs.map((log) => (
@@ -195,8 +201,17 @@ export default function ActivityLogsPage() {
                           {getEntityTypeLabel(log.entity_type)}
                         </span>
                       </TableCell>
-                      <TableCell className="max-w-xs truncate">
+                      <TableCell className="whitespace-nowrap">
                         {log.entity_name}
+                      </TableCell>
+                      <TableCell className="max-w-md">
+                        {log.changes ? (
+                          <span className="text-xs text-gray-600" title={log.changes}>
+                            {log.changes.length > 80 ? `${log.changes.substring(0, 80)}...` : log.changes}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

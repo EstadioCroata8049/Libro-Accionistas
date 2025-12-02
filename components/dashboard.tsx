@@ -244,6 +244,7 @@ export function Dashboard() {
     const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
     const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
     const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [accionistaOriginal, setAccionistaOriginal] = useState<any>(null); // Para detectar cambios en edición
 
     // Obtener el usuario actual de la cookie al montar el componente
     useEffect(() => {
@@ -258,7 +259,7 @@ export function Dashboard() {
     }, []);
 
     // Función para registrar actividad en la tabla activity_logs
-    const logActivity = async (action: string, entityType: string, entityId: string, entityName: string) => {
+    const logActivity = async (action: string, entityType: string, entityId: string, entityName: string, changes?: string) => {
         if (!currentUser) {
             console.warn("No hay usuario actual para registrar actividad");
             return;
@@ -271,12 +272,13 @@ export function Dashboard() {
                 entity_type: entityType,
                 entity_id: entityId,
                 entity_name: entityName,
+                changes: changes || null,
             });
             
             if (error) {
                 console.error("Error Supabase al registrar actividad:", error);
             } else {
-                console.log("Actividad registrada:", { action, entityType, entityName, user: currentUser });
+                console.log("Actividad registrada:", { action, entityType, entityName, changes, user: currentUser });
             }
         } catch (error) {
             console.error("Error registrando actividad:", error);
@@ -905,7 +907,7 @@ export function Dashboard() {
             return match ? match[0] : "";
         })();
 
-        setRegistroDraft({
+        const draftData = {
             nombre: accionista.nombre || "",
             apellidos: accionista.apellidos || "",
             rut: accionista.rut || "",
@@ -918,7 +920,11 @@ export function Dashboard() {
             fallecido: !!fechaDefuncionIso,
             saldo: saldoSoloNumero,
             firma: accionista.firma || "",
-        });
+        };
+        
+        setRegistroDraft(draftData);
+        // Guardar estado original para detectar cambios después
+        setAccionistaOriginal({ ...draftData });
         setIsRegistroOpen(true);
     };
 
@@ -1025,10 +1031,44 @@ export function Dashboard() {
             setMovimientosPage(0);
             setIsRegistroOpen(false);
             
-            // Registrar actividad si es creación
-            if (isCreating && a.id) {
+            // Registrar actividad
+            if (a.id) {
                 const nombreCompleto = [a.nombre, a.apellidos].filter(Boolean).join(" ") || "Sin nombre";
-                await logActivity("crear_accionista", "accionista", a.id, nombreCompleto);
+                const action = isCreating ? "crear_accionista" : "editar_accionista";
+                
+                // Detectar cambios si es edición
+                let changesText: string | undefined;
+                if (!isCreating && accionistaOriginal) {
+                    const fieldLabels: Record<string, string> = {
+                        nombre: "Nombre",
+                        apellidos: "Apellidos",
+                        rut: "RUT",
+                        nacionalidad: "Nacionalidad",
+                        direccion: "Dirección",
+                        ciudad: "Ciudad",
+                        registro: "Registro",
+                        fono: "Teléfono",
+                        fechaDefuncion: "Fecha defunción",
+                        saldo: "Saldo",
+                        firma: "Firma",
+                    };
+                    
+                    const changes: string[] = [];
+                    for (const key of Object.keys(fieldLabels)) {
+                        const oldVal = accionistaOriginal[key] || "";
+                        const newVal = (registroDraft as any)[key] || "";
+                        if (oldVal !== newVal) {
+                            changes.push(`${fieldLabels[key]}: "${oldVal}" → "${newVal}"`);
+                        }
+                    }
+                    
+                    if (changes.length > 0) {
+                        changesText = changes.join("; ");
+                    }
+                }
+                
+                await logActivity(action, "accionista", a.id, nombreCompleto, changesText);
+                setAccionistaOriginal(null); // Limpiar después de guardar
             }
             
             // Forzar recarga de datos actualizando searchTerm con el RUT del accionista
@@ -1243,6 +1283,45 @@ export function Dashboard() {
                 });
                 return;
             }
+
+            // Registrar actividad de edición con cambios detectados
+            const descripcion = updatedRow.transferencia !== "-"
+                ? `Traspaso #${updatedRow.transferencia}`
+                : `Traspaso del ${updatedRow.fecha}`;
+            
+            // Detectar cambios comparando con editingMovimiento (estado original)
+            let changesText: string | undefined;
+            if (editingMovimiento) {
+                const fieldLabels: Record<string, string> = {
+                    fecha: "Fecha",
+                    transferencia: "N° Transferencia",
+                    tituloAnulado: "Título inutilizado",
+                    compradoA: "Comprado a",
+                    vendidoA: "Vendido a",
+                    tituloNuevoComprador: "Título nuevo comprador",
+                    tituloNuevoVendedor: "Título nuevo vendedor",
+                    compras: "Compras",
+                    ventas: "Ventas",
+                    saldo: "Saldo",
+                    observaciones: "Observaciones",
+                    tituloEmitido: "Título emitido",
+                };
+                
+                const changes: string[] = [];
+                for (const key of Object.keys(fieldLabels)) {
+                    const oldVal = editingMovimiento[key] || "-";
+                    const newVal = updatedRow[key] || "-";
+                    if (oldVal !== newVal) {
+                        changes.push(`${fieldLabels[key]}: "${oldVal}" → "${newVal}"`);
+                    }
+                }
+                
+                if (changes.length > 0) {
+                    changesText = changes.join("; ");
+                }
+            }
+            
+            await logActivity("editar_traspaso", "movimiento", String(editingRowId), descripcion, changesText);
 
             addToast({
                 title: "Cambios guardados",
