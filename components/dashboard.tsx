@@ -243,6 +243,45 @@ export function Dashboard() {
     const [isExportTotalLoading, setIsExportTotalLoading] = useState(false);
     const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
     const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
+    const [currentUser, setCurrentUser] = useState<string | null>(null);
+
+    // Obtener el usuario actual de la cookie al montar el componente
+    useEffect(() => {
+        const cookies = document.cookie.split(";");
+        for (const cookie of cookies) {
+            const [name, value] = cookie.trim().split("=");
+            if (name === "current_user" && value) {
+                setCurrentUser(decodeURIComponent(value));
+                break;
+            }
+        }
+    }, []);
+
+    // Función para registrar actividad en la tabla activity_logs
+    const logActivity = async (action: string, entityType: string, entityId: string, entityName: string) => {
+        if (!currentUser) {
+            console.warn("No hay usuario actual para registrar actividad");
+            return;
+        }
+        
+        try {
+            const { error } = await supabase.from("activity_logs").insert({
+                user_name: currentUser,
+                action,
+                entity_type: entityType,
+                entity_id: entityId,
+                entity_name: entityName,
+            });
+            
+            if (error) {
+                console.error("Error Supabase al registrar actividad:", error);
+            } else {
+                console.log("Actividad registrada:", { action, entityType, entityName, user: currentUser });
+            }
+        } catch (error) {
+            console.error("Error registrando actividad:", error);
+        }
+    };
 
     const handleOpenPdfPicker = () => {
         if (!accionistaId) {
@@ -914,6 +953,7 @@ export function Dashboard() {
 
             let data: any = null;
             let error: any = null;
+            const isCreating = !accionistaId;
 
             if (accionistaId) {
                 // Modo edición: actualizar registro existente por id
@@ -984,6 +1024,12 @@ export function Dashboard() {
             setMovimientos([]);
             setMovimientosPage(0);
             setIsRegistroOpen(false);
+            
+            // Registrar actividad si es creación
+            if (isCreating && a.id) {
+                const nombreCompleto = [a.nombre, a.apellidos].filter(Boolean).join(" ") || "Sin nombre";
+                await logActivity("crear_accionista", "accionista", a.id, nombreCompleto);
+            }
             
             // Forzar recarga de datos actualizando searchTerm con el RUT del accionista
             // Esto dispara el useEffect y carga correctamente los movimientos
@@ -1104,6 +1150,14 @@ export function Dashboard() {
 
             setMovimientos((prev) => [...prev, newRow]);
             setMovimientosTotal((prev) => prev + 1);
+
+            // Registrar actividad del traspaso
+            if (data.id) {
+                const descripcion = data.numero_transferencia 
+                    ? `Traspaso #${data.numero_transferencia}` 
+                    : `Traspaso del ${newRow.fecha}`;
+                await logActivity("crear_traspaso", "movimiento", data.id, descripcion);
+            }
 
             addToast({
                 title: "Movimiento guardado",
@@ -1298,6 +1352,15 @@ export function Dashboard() {
                                     >
                                         Crear usuario
                                     </Button>
+                                    <Button
+                                        radius="sm"
+                                        variant="shadow"
+                                        color="warning"
+                                        className="text-black"
+                                        onPress={() => router.push("/admin/logs")}
+                                    >
+                                        Ver logs
+                                    </Button>
                                 </div>
                             </div>
                             <div className="mt-3 flex flex-col items-start">
@@ -1317,6 +1380,7 @@ export function Dashboard() {
                                         color="danger"
                                         onPress={() => {
                                             document.cookie = "logged_in=; path=/; max-age=0";
+                                            document.cookie = "current_user=; path=/; max-age=0";
                                             router.push("/login");
                                         }}
                                     >

@@ -60,6 +60,8 @@ export function LoginCard() {
 
     // Marca de sesion muy simple basada en cookie legible en middleware
     document.cookie = "logged_in=1; path=/; max-age=86400"; // 1 dia
+    // Guardar el username para auditoría
+    document.cookie = `current_user=${encodeURIComponent(userRecord.username)}; path=/; max-age=86400`;
 
     // Cambia visualmente el botón a "Ingresado" y espera un instante
     setLoggedInVisual(true);
