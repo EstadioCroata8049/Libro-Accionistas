@@ -65,11 +65,27 @@ export default function ActivityLogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [currentEmpresaId, setCurrentEmpresaId] = useState<string | null>(null);
+  const [currentEmpresaNombre, setCurrentEmpresaNombre] = useState<string | null>(null);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
+  // Obtener empresa de cookies
+  useEffect(() => {
+    const cookies = document.cookie.split(";");
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split("=");
+      if (name === "current_empresa_id" && value) {
+        setCurrentEmpresaId(value);
+      }
+      if (name === "current_empresa_nombre" && value) {
+        setCurrentEmpresaNombre(decodeURIComponent(value));
+      }
+    }
+  }, []);
+
   // Cargar logs con paginación offset (eficiente con índice en created_at)
-  const loadLogs = useCallback(async (page: number) => {
+  const loadLogs = useCallback(async (page: number, empresaId: string | null) => {
     setLoading(true);
     setError(null);
 
@@ -78,13 +94,18 @@ export default function ActivityLogsPage() {
 
     // Solo traer campos necesarios (no entity_id que no se muestra)
     // Usar count: 'exact' solo en primera carga para obtener total
-    const query = supabase
+    let query = supabase
       .from("activity_logs")
       .select("id, user_name, action, entity_type, entity_name, changes, created_at", 
         page === 1 ? { count: "exact" } : { count: "planned" }
-      )
-      .order("created_at", { ascending: false })
-      .range(from, to);
+      );
+    
+    // Filtrar por empresa si hay una seleccionada
+    if (empresaId) {
+      query = query.eq("empresa_id", empresaId);
+    }
+    
+    query = query.order("created_at", { ascending: false }).range(from, to);
 
     const { data, error: fetchError, count } = await query;
 
@@ -104,15 +125,17 @@ export default function ActivityLogsPage() {
     setLoading(false);
   }, [totalCount]);
 
-  // Cargar primera página al montar
+  // Cargar primera página cuando tengamos empresa
   useEffect(() => {
-    loadLogs(1);
-  }, []);
+    if (currentEmpresaId) {
+      loadLogs(1, currentEmpresaId);
+    }
+  }, [currentEmpresaId, loadLogs]);
 
   // Cambiar de página
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    loadLogs(page);
+    loadLogs(page, currentEmpresaId);
   };
 
   return (
@@ -124,7 +147,7 @@ export default function ActivityLogsPage() {
               Registro de Actividad
             </h1>
             <p className="text-xs text-gray-500">
-              Historial de creación de accionistas y traspasos
+              {currentEmpresaNombre ? `${currentEmpresaNombre} - ` : ""}Historial de creación de accionistas y traspasos
             </p>
           </div>
           <Button

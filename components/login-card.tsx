@@ -68,7 +68,7 @@ export function LoginCard() {
     setLoading(false);
 
     setTimeout(() => {
-      router.push("/dashboard");
+      router.push("/select-empresa");
     }, 300);
   };
 

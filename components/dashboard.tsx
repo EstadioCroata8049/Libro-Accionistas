@@ -244,16 +244,27 @@ export function Dashboard() {
     const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
     const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
     const [currentUser, setCurrentUser] = useState<string | null>(null);
+    const [currentEmpresaId, setCurrentEmpresaId] = useState<string | null>(null);
+    const [currentEmpresaNombre, setCurrentEmpresaNombre] = useState<string | null>(null);
+    const [currentEmpresaRut, setCurrentEmpresaRut] = useState<string | null>(null);
     const [accionistaOriginal, setAccionistaOriginal] = useState<any>(null); // Para detectar cambios en edición
 
-    // Obtener el usuario actual de la cookie al montar el componente
+    // Obtener el usuario actual y empresa de las cookies al montar el componente
     useEffect(() => {
         const cookies = document.cookie.split(";");
         for (const cookie of cookies) {
             const [name, value] = cookie.trim().split("=");
             if (name === "current_user" && value) {
                 setCurrentUser(decodeURIComponent(value));
-                break;
+            }
+            if (name === "current_empresa_id" && value) {
+                setCurrentEmpresaId(value);
+            }
+            if (name === "current_empresa_nombre" && value) {
+                setCurrentEmpresaNombre(decodeURIComponent(value));
+            }
+            if (name === "current_empresa_rut" && value) {
+                setCurrentEmpresaRut(decodeURIComponent(value));
             }
         }
     }, []);
@@ -273,12 +284,13 @@ export function Dashboard() {
                 entity_id: entityId,
                 entity_name: entityName,
                 changes: changes || null,
+                empresa_id: currentEmpresaId || null,
             });
             
             if (error) {
                 console.error("Error Supabase al registrar actividad:", error);
             } else {
-                console.log("Actividad registrada:", { action, entityType, entityName, changes, user: currentUser });
+                console.log("Actividad registrada:", { action, entityType, entityName, changes, user: currentUser, empresa: currentEmpresaId });
             }
         } catch (error) {
             console.error("Error registrando actividad:", error);
@@ -325,10 +337,17 @@ export function Dashboard() {
                 { header: "Saldo total", key: "saldo", width: 16 },
             ];
 
-            const { data: accionistas, error } = await supabase
+            // Filtrar por empresa si hay una seleccionada
+            let query = supabase
                 .from("accionistas")
                 .select("*")
                 .order("nombre", { ascending: true });
+            
+            if (currentEmpresaId) {
+                query = query.eq("empresa_id", currentEmpresaId);
+            }
+            
+            const { data: accionistas, error } = await query;
 
             if (error || !accionistas) {
                 console.error("Error cargando accionistas para exportar:", error);
@@ -697,8 +716,17 @@ export function Dashboard() {
         setIsTableMounted(true);
 
         const fetchData = async () => {
+            // No cargar datos si no hay empresa seleccionada
+            if (!currentEmpresaId) {
+                return;
+            }
+
             // 1) Buscar accionista según searchTerm (RUT / nombre). Si no hay término, tomar el primero.
-            let accionistasQuery = supabase.from("accionistas").select("*");
+            // Filtrar siempre por empresa_id
+            let accionistasQuery = supabase
+                .from("accionistas")
+                .select("*")
+                .eq("empresa_id", currentEmpresaId);
 
             const trimmed = searchTerm.trim();
             if (trimmed.length > 0) {
@@ -853,7 +881,7 @@ export function Dashboard() {
         };
 
         fetchData();
-    }, [searchTerm, movimientosPage]);
+    }, [searchTerm, movimientosPage, currentEmpresaId]);
 
     const handleOpenCreateRegistro = () => {
         // Limpiar accionistaId para asegurar que se cree un nuevo registro
@@ -973,10 +1001,13 @@ export function Dashboard() {
                 data = response.data;
                 error = response.error;
             } else {
-                // Modo creación: insertar nuevo registro
+                // Modo creación: insertar nuevo registro con empresa_id
                 const response = await supabase
                     .from("accionistas")
-                    .insert(payload)
+                    .insert({
+                        ...payload,
+                        empresa_id: currentEmpresaId,
+                    })
                     .select("*")
                     .single();
 
@@ -1388,8 +1419,13 @@ export function Dashboard() {
                                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
                                     Libro electrónico de accionistas
                                 </p>
-                                <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl">
-                                    Inmobiliaria Yugoslava S.A
+                                <h1 className="text-xl font-semibold text-gray-900 sm:text-2xl flex items-center gap-3">
+                                    {currentEmpresaNombre || "Selecciona una empresa"}
+                                    {currentEmpresaRut && (
+                                        <span className="text-base font-normal text-gray-500">
+                                            {currentEmpresaRut}
+                                        </span>
+                                    )}
                                 </h1>
                             </div>
                             <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -1456,10 +1492,25 @@ export function Dashboard() {
                                         radius="sm"
                                         size="sm"
                                         variant="shadow"
+                                        color="warning"
+                                        onPress={() => {
+                                            document.cookie = "current_empresa_id=; path=/; max-age=0";
+                                            document.cookie = "current_empresa_nombre=; path=/; max-age=0";
+                                            router.push("/select-empresa");
+                                        }}
+                                    >
+                                        Cambiar empresa
+                                    </Button>
+                                    <Button
+                                        radius="sm"
+                                        size="sm"
+                                        variant="shadow"
                                         color="danger"
                                         onPress={() => {
                                             document.cookie = "logged_in=; path=/; max-age=0";
                                             document.cookie = "current_user=; path=/; max-age=0";
+                                            document.cookie = "current_empresa_id=; path=/; max-age=0";
+                                            document.cookie = "current_empresa_nombre=; path=/; max-age=0";
                                             router.push("/login");
                                         }}
                                     >
