@@ -132,24 +132,28 @@ const cleanRut = (value: string): string => {
     return value.replace(/[^0-9kK]/g, "");
 };
 
-// Función para formatear teléfono chileno: +569 XXXX XXXX
+// Función para formatear teléfono chileno: +56 XXXX XXXX
 const formatPhone = (value: string): string => {
     // Si el valor está vacío o es solo el prefijo, devolver el prefijo
-    if (!value || value === "+569" || value === "+569 ") {
-        return "+569 ";
+    if (!value || value === "+56" || value === "+56 ") {
+        return "+56 ";
     }
     
     // Remover todo excepto números
-    const cleaned = value.replace(/[^0-9]/g, "");
+    const cleanedRaw = value.replace(/[^0-9]/g, "");
+
+    // Normalizar: si viene como 569XXXXXXXX, quitar el 9 extra
+    let cleaned = cleanedRaw;
+    if (cleanedRaw.startsWith("569")) {
+        cleaned = `56${cleanedRaw.slice(3)}`;
+    }
     
     // Si está vacío después de limpiar, devolver el prefijo
-    if (cleaned.length === 0) return "+569 ";
+    if (cleaned.length === 0) return "+56 ";
     
-    // Si empieza con 569, usar esos dígitos
+    // Si empieza con 56, usar esos dígitos; si empieza con 9, quitarlo
     let numbers = cleaned;
-    if (cleaned.startsWith("569")) {
-        numbers = cleaned.slice(3);
-    } else if (cleaned.startsWith("56")) {
+    if (cleaned.startsWith("56")) {
         numbers = cleaned.slice(2);
     } else if (cleaned.startsWith("9")) {
         numbers = cleaned.slice(1);
@@ -158,25 +162,38 @@ const formatPhone = (value: string): string => {
     // Limitar a 8 dígitos después del prefijo
     numbers = numbers.slice(0, 8);
     
-    if (numbers.length === 0) return "+569 ";
+    if (numbers.length === 0) return "+56 ";
     
-    // Formatear: +569 XXXX XXXX
+    // Formatear: +56 XXXX XXXX
     if (numbers.length <= 4) {
-        return `+569 ${numbers}`;
+        return `+56 ${numbers}`;
     } else {
-        return `+569 ${numbers.slice(0, 4)} ${numbers.slice(4)}`;
+        return `+56 ${numbers.slice(0, 4)} ${numbers.slice(4)}`;
     }
 };
 
 // Función para limpiar teléfono (quitar formato, dejar solo números)
 const cleanPhone = (value: string): string => {
-    const cleaned = value.replace(/[^0-9]/g, "");
-    // Si empieza con 569, devolverlo completo
-    if (cleaned.startsWith("569")) {
-        return cleaned;
+    const cleanedRaw = value.replace(/[^0-9]/g, "");
+
+    // Normalizar: si empieza con 569, convertir a 56 + 8 dígitos
+    if (cleanedRaw.startsWith("569")) {
+        const rest = cleanedRaw.slice(3); // quitar 569
+        const numero = rest.slice(0, 8); // máximo 8 dígitos
+        return numero.length > 0 ? `56${numero}` : "";
     }
-    // Si no, agregar el prefijo 569
-    return cleaned.length > 0 ? `569${cleaned}` : "";
+
+    const cleaned = cleanedRaw;
+
+    // Si empieza con 56, devolverlo (recortando a largo máximo razonable)
+    if (cleaned.startsWith("56")) {
+        const numero = cleaned.slice(2).slice(0, 8);
+        return numero.length > 0 ? `56${numero}` : "";
+    }
+
+    // Si no, agregar el prefijo 56 y limitar a 8 dígitos
+    const numero = cleaned.slice(0, 8);
+    return numero.length > 0 ? `56${numero}` : "";
 };
 
 const emptyMovimiento = {
@@ -195,11 +212,13 @@ const emptyMovimiento = {
 };
 const emptyAccionista = {
     nombre: "",
-    apellidos: "",
+    apellidoPaterno: "",
+    apellidoMaterno: "",
     rut: "-",
     nacionalidad: "-",
     direccion: "-",
     ciudad: "-",
+    email: "-",
     registro: "-",
     fono: "-",
     fechaDefuncion: "-",
@@ -210,21 +229,25 @@ const emptyAccionista = {
 export function Dashboard() {
     const router = useRouter();
     const pdfInputRef = useRef<HTMLInputElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
     const [isTableMounted, setIsTableMounted] = useState(false);
     const [movimientos, setMovimientos] = useState<any[]>([]);
     const [movimientosTotal, setMovimientosTotal] = useState(0);
     const [movimientosPage, setMovimientosPage] = useState(0);
     const [accionista, setAccionista] = useState(emptyAccionista);
     const [accionistaId, setAccionistaId] = useState<string | null>(null);
+    const [selectedAccionistaId, setSelectedAccionistaId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [isRegistroOpen, setIsRegistroOpen] = useState(false);
     const [registroDraft, setRegistroDraft] = useState({
         nombre: "",
-        apellidos: "",
+        apellidoPaterno: "",
+        apellidoMaterno: "",
         rut: "",
         nacionalidad: "",
         direccion: "",
         ciudad: "",
+        email: "",
         registro: "",
         fono: "",
         fechaDefuncion: "",
@@ -241,6 +264,7 @@ export function Dashboard() {
     const [isEditMode, setIsEditMode] = useState(false);
     const [registroSaving, setRegistroSaving] = useState(false);
     const [isExportTotalLoading, setIsExportTotalLoading] = useState(false);
+    const [isExportPresenteLoading, setIsExportPresenteLoading] = useState(false);
     const [accionistaPdfUrl, setAccionistaPdfUrl] = useState<string | null>(null);
     const [isDocumentsLoading, setIsDocumentsLoading] = useState(false);
     const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -248,6 +272,13 @@ export function Dashboard() {
     const [currentEmpresaNombre, setCurrentEmpresaNombre] = useState<string | null>(null);
     const [currentEmpresaRut, setCurrentEmpresaRut] = useState<string | null>(null);
     const [accionistaOriginal, setAccionistaOriginal] = useState<any>(null); // Para detectar cambios en edición
+    const [isSelectAccionistaOpen, setIsSelectAccionistaOpen] = useState(false);
+    const [listaAccionistas, setListaAccionistas] = useState<any[]>([]);
+    const [isListaAccionistasLoading, setIsListaAccionistasLoading] = useState(false);
+    const [listaAccionistasFilter, setListaAccionistasFilter] = useState("");
+    const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+    const [isSearchSuggestionsOpen, setIsSearchSuggestionsOpen] = useState(false);
+    const [isSearchLoading, setIsSearchLoading] = useState(false);
 
     // Obtener el usuario actual y empresa de las cookies al montar el componente
     useEffect(() => {
@@ -297,6 +328,107 @@ export function Dashboard() {
         }
     };
 
+    const handleOpenSelectAccionista = async () => {
+        if (!currentEmpresaId) {
+            addToast({
+                title: "Sin empresa",
+                description: "Debes seleccionar una empresa antes de elegir un accionista.",
+                color: "warning",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            return;
+        }
+
+        setIsSelectAccionistaOpen(true);
+        setIsListaAccionistasLoading(true);
+
+        const { data, error } = await supabase
+            .from("accionistas")
+            .select("id, nombre, apellido_paterno, apellido_materno, rut, registro")
+            .eq("empresa_id", currentEmpresaId)
+            .order("apellido_paterno", { ascending: true });
+
+        if (error) {
+            console.error("Error cargando lista de accionistas:", error);
+            addToast({
+                title: "Error",
+                description: "No se pudo cargar la lista de accionistas.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+            setIsListaAccionistasLoading(false);
+            return;
+        }
+
+        setListaAccionistas(data || []);
+        setIsListaAccionistasLoading(false);
+    };
+
+    const handleSelectAccionistaFromList = (acc: any) => {
+        const apellidosTexto =
+            [acc.apellido_paterno, acc.apellido_materno]
+                .filter(Boolean)
+                .join(" ");
+        // Mostrar siempre el nombre completo en el buscador
+        const nombreCompleto = [acc.nombre, apellidosTexto]
+            .filter(Boolean)
+            .join(" ");
+        setSearchTerm(nombreCompleto);
+        setSelectedAccionistaId(acc.id ?? null);
+        setMovimientosPage(0);
+        setIsSelectAccionistaOpen(false);
+        setIsSearchSuggestionsOpen(false);
+    };
+
+    const handleSearchChange = async (rawValue: string) => {
+        // Mantener comportamiento actual de formatear RUT
+        let nextValue = rawValue;
+        if (/\d/.test(rawValue)) {
+            nextValue = formatRut(rawValue);
+        }
+        setSearchTerm(nextValue);
+        // Si el usuario está escribiendo manualmente, dejar de forzar selección por id
+        setSelectedAccionistaId(null);
+
+        const term = nextValue.trim();
+
+        // Si no hay empresa o el término es corto, limpiar sugerencias
+        if (!currentEmpresaId || term.length < 2) {
+            setSearchSuggestions([]);
+            setIsSearchSuggestionsOpen(false);
+            return;
+        }
+
+        setIsSearchLoading(true);
+        setIsSearchSuggestionsOpen(true);
+
+        const { data, error } = await supabase
+            .from("accionistas")
+            .select("id, nombre, apellido_paterno, apellido_materno, rut, registro")
+            .eq("empresa_id", currentEmpresaId)
+            .or(
+                `rut.ilike.%${term.replace(/[^0-9kK]/g, "")}%,nombre.ilike.%${term}%,apellido_paterno.ilike.%${term}%,apellido_materno.ilike.%${term}%`,
+            )
+            .order("apellido_paterno", { ascending: true })
+            .limit(20);
+
+        if (error) {
+            console.error("Error cargando sugerencias de accionistas:", error);
+            setSearchSuggestions([]);
+            setIsSearchSuggestionsOpen(false);
+            setIsSearchLoading(false);
+            return;
+        }
+
+        setSearchSuggestions(data || []);
+        setIsSearchSuggestionsOpen((data || []).length > 0);
+        setIsSearchLoading(false);
+    };
+
     const handleOpenPdfPicker = () => {
         if (!accionistaId) {
             addToast({
@@ -325,7 +457,7 @@ export function Dashboard() {
 
             // Columnas solicitadas:
             // 1) Registro
-            // 2) Accionista (APELLIDOS + NOMBRES)
+            // 2) Accionista (APELLIDO PATERNO + APELLIDO MATERNO + NOMBRES)
             // 3) RUT
             // 4) Fallecido (solo si tiene fecha de defunción)
             // 5) Saldo total
@@ -391,7 +523,12 @@ export function Dashboard() {
                 rows.push({
                     registro: a.registro || "-",
                     accionista:
-                        [a.apellidos, a.nombre]
+                        [
+                            [a.apellido_paterno, a.apellido_materno]
+                                .filter(Boolean)
+                                .join(" "),
+                            a.nombre,
+                        ]
                             .map((v: any) => v || "")
                             .filter((v: string) => v.trim().length > 0)
                             .join(" ") || "-",
@@ -453,6 +590,173 @@ export function Dashboard() {
         }
         finally {
             setIsExportTotalLoading(false);
+        }
+    };
+
+    const handleExportListaPresente = async () => {
+        try {
+            setIsExportPresenteLoading(true);
+
+            let query = supabase
+                .from("accionistas")
+                .select(
+                    "id, nombre, apellido_paterno, apellido_materno, rut, email, fono, saldo_acciones"
+                )
+                .order("apellido_paterno", { ascending: true })
+                .order("apellido_materno", { ascending: true })
+                .order("nombre", { ascending: true });
+
+            if (currentEmpresaId) {
+                query = query.eq("empresa_id", currentEmpresaId);
+            }
+
+            const { data: accionistas, error } = await query;
+
+            if (error || !accionistas) {
+                console.error("Error cargando accionistas para lista de presente:", error);
+                addToast({
+                    title: "Error al exportar",
+                    description: "No se pudieron cargar los accionistas.",
+                    color: "danger",
+                    variant: "solid",
+                    timeout: 2000,
+                    shouldShowTimeoutProgress: true,
+                });
+                return;
+            }
+
+            const escapeHtml = (value: any) =>
+                String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/\"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+
+            const now = new Date();
+            const dd = String(now.getDate()).padStart(2, "0");
+            const mm = String(now.getMonth() + 1).padStart(2, "0");
+            const yyyy = now.getFullYear();
+            const fecha = `${dd}-${mm}-${yyyy}`;
+            const tituloEmpresa = currentEmpresaNombre ? ` - ${currentEmpresaNombre}` : "";
+
+            const rowsHtml = (accionistas as any[])
+                .map((a, idx) => {
+                    const numero = idx + 1;
+                    const apellidoPaterno = a.apellido_paterno ?? "";
+                    const apellidoMaterno = a.apellido_materno ?? "";
+                    const nombres = a.nombre ?? "";
+                    const rut = a.rut ? formatRut(String(a.rut)) : "";
+                    const email = a.email ?? "";
+                    const celular = a.fono ? formatPhone(String(a.fono)) : "";
+                    const totalAcciones = a.saldo_acciones ?? "";
+
+                    return `
+                        <tr>
+                            <td class="c-num">${escapeHtml(numero)}</td>
+                            <td>${escapeHtml(apellidoPaterno)}</td>
+                            <td>${escapeHtml(apellidoMaterno)}</td>
+                            <td>${escapeHtml(nombres)}</td>
+                            <td class="c-rut">${escapeHtml(rut)}</td>
+                            <td>${escapeHtml(email)}</td>
+                            <td class="c-cel">${escapeHtml(celular)}</td>
+                            <td class="c-acc">${escapeHtml(totalAcciones)}</td>
+                            <td class="c-firma"></td>
+                        </tr>
+                    `;
+                })
+                .join("");
+
+            const html = `
+                <!doctype html>
+                <html>
+                    <head>
+                        <meta charset="utf-8" />
+                        <meta name="viewport" content="width=device-width, initial-scale=1" />
+                        <title>Lista de presente${escapeHtml(tituloEmpresa)} - ${escapeHtml(fecha)}</title>
+                        <style>
+                            @page { size: A4 landscape; margin: 12mm; }
+                            body { font-family: Arial, Helvetica, sans-serif; color: #111; }
+                            .header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+                            .title { font-size: 16px; font-weight: 700; }
+                            .meta { font-size: 12px; color: #444; }
+                            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+                            th, td { border: 1px solid #111; padding: 6px 6px; font-size: 10px; vertical-align: top; }
+                            th { background: #f0f0f0; text-align: left; }
+                            .c-num { width: 34px; text-align: center; }
+                            .c-rut { width: 95px; }
+                            .c-cel { width: 85px; }
+                            .c-acc { width: 70px; text-align: right; }
+                            .c-firma { width: 150px; }
+                            tr { page-break-inside: avoid; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <div class="title">Lista de presente${escapeHtml(tituloEmpresa)}</div>
+                            <div class="meta">Fecha: ${escapeHtml(fecha)}</div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="c-num">N°</th>
+                                    <th>Apellido paterno</th>
+                                    <th>Apellido materno</th>
+                                    <th>Nombres</th>
+                                    <th class="c-rut">RUT</th>
+                                    <th>Email</th>
+                                    <th class="c-cel">Celular</th>
+                                    <th class="c-acc">Total acciones</th>
+                                    <th class="c-firma">Firma</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                    </body>
+                </html>
+            `;
+
+            // Crear iframe oculto para imprimir
+            const iframe = document.createElement("iframe");
+            iframe.style.position = "absolute";
+            iframe.style.width = "0px";
+            iframe.style.height = "0px";
+            iframe.style.border = "none";
+            iframe.style.visibility = "hidden"; // Ocultarlo visualmente pero dejarlo en el DOM para que renderice
+            document.body.appendChild(iframe);
+
+            const doc = iframe.contentWindow?.document;
+            if (doc) {
+                doc.open();
+                doc.write(html);
+                doc.close();
+
+                // Esperar a que cargue y luego imprimir
+                iframe.contentWindow?.focus();
+                setTimeout(() => {
+                    iframe.contentWindow?.print();
+                    // Remover el iframe después de un tiempo prudente (después de que el usuario cierre el diálogo)
+                    setTimeout(() => {
+                        document.body.removeChild(iframe);
+                    }, 2000);
+                }, 500);
+            } else {
+                throw new Error("No se pudo acceder al documento del iframe de impresión.");
+            }
+        } catch (error) {
+            console.error("Error exportando lista de presente:", error);
+            addToast({
+                title: "Error al exportar",
+                description: "No se pudo generar el PDF.",
+                color: "danger",
+                variant: "solid",
+                timeout: 2000,
+                shouldShowTimeoutProgress: true,
+            });
+        } finally {
+            setIsExportPresenteLoading(false);
         }
     };
 
@@ -641,7 +945,8 @@ export function Dashboard() {
             // Definir columnas: un campo por columna
             worksheet.columns = [
                 { header: "Nombre", key: "nombre", width: 20 },
-                { header: "Apellidos", key: "apellidos", width: 25 },
+                { header: "Apellido paterno", key: "apellidoPaterno", width: 18 },
+                { header: "Apellido materno", key: "apellidoMaterno", width: 18 },
                 { header: "RUT", key: "rut", width: 18 },
                 { header: "Nacionalidad", key: "nacionalidad", width: 18 },
                 { header: "Dirección", key: "direccion", width: 30 },
@@ -662,7 +967,8 @@ export function Dashboard() {
             // Agregar una sola fila con los valores del accionista (sin firma)
             worksheet.addRow({
                 nombre: accionista.nombre || "-",
-                apellidos: accionista.apellidos || "-",
+                apellidoPaterno: accionista.apellidoPaterno || "-",
+                apellidoMaterno: accionista.apellidoMaterno || "-",
                 rut: accionista.rut || "-",
                 nacionalidad: accionista.nacionalidad || "-",
                 direccion: accionista.direccion || "-",
@@ -691,8 +997,8 @@ export function Dashboard() {
             const link = document.createElement("a");
             link.href = url;
             
-            // Nombre del archivo: "Nombre Apellidos_datos_exportados.xlsx"
-            const nombreCompleto = [accionista.nombre, accionista.apellidos]
+            // Nombre del archivo: "Nombre ApellidoPaterno ApellidoMaterno_datos_exportados.xlsx"
+            const nombreCompleto = [accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
                 .filter(Boolean)
                 .join(" ") || "accionista";
             link.download = `${nombreCompleto}_datos_exportados.xlsx`;
@@ -721,33 +1027,51 @@ export function Dashboard() {
                 return;
             }
 
-            // 1) Buscar accionista según searchTerm (RUT / nombre). Si no hay término, tomar el primero.
-            // Filtrar siempre por empresa_id
-            let accionistasQuery = supabase
-                .from("accionistas")
-                .select("*")
-                .eq("empresa_id", currentEmpresaId);
+            // 1) Si hay un accionista seleccionado por lista/autocomplete, cargarlo por ID exacto
+            let accionistas: any[] | null = null;
+            let error: any = null;
 
-            const trimmed = searchTerm.trim();
-            if (trimmed.length > 0) {
-                // Limpiar el RUT para buscar sin formato
-                const cleanedRut = cleanRut(trimmed);
-                
-                // Buscar en todos los campos de forma flexible (case-insensitive, parcial)
-                // ilike busca sin importar mayúsculas/minúsculas
-                accionistasQuery = accionistasQuery.or(
-                    `rut.ilike.%${cleanedRut}%,nombre.ilike.%${trimmed}%,apellidos.ilike.%${trimmed}%`,
-                );
+            if (selectedAccionistaId) {
+                const result = await supabase
+                    .from("accionistas")
+                    .select("*")
+                    .eq("empresa_id", currentEmpresaId)
+                    .eq("id", selectedAccionistaId)
+                    .limit(1);
+                accionistas = result.data as any[] | null;
+                error = result.error;
+            } else {
+                // 2) Buscar accionista según searchTerm (RUT / nombre). Si no hay término, tomar el primero.
+                // Filtrar siempre por empresa_id
+                let accionistasQuery = supabase
+                    .from("accionistas")
+                    .select("*")
+                    .eq("empresa_id", currentEmpresaId);
+
+                const trimmed = searchTerm.trim();
+                if (trimmed.length > 0) {
+                    // Limpiar el RUT para buscar sin formato
+                    const cleanedRut = cleanRut(trimmed);
+                    
+                    // Buscar en todos los campos de forma flexible (case-insensitive, parcial)
+                    // ilike busca sin importar mayúsculas/minúsculas
+                    accionistasQuery = accionistasQuery.or(
+                        `rut.ilike.%${cleanedRut}%,nombre.ilike.%${trimmed}%,apellido_paterno.ilike.%${trimmed}%,apellido_materno.ilike.%${trimmed}%`,
+                    );
+                }
+
+                const result = await accionistasQuery
+                    .limit(100); // Traer hasta 100 resultados para luego filtrar el mejor match
+                accionistas = result.data as any[] | null;
+                error = result.error;
             }
-
-            const { data: accionistas, error } = await accionistasQuery
-                .limit(100); // Traer hasta 100 resultados para luego filtrar el mejor match
 
             if (!error && accionistas && accionistas.length > 0) {
                 // Encontrar el mejor match basado en relevancia
                 let bestMatch = accionistas[0];
                 
-                if (trimmed.length > 0 && accionistas.length > 1) {
+                const trimmed = searchTerm.trim();
+                if (!selectedAccionistaId && trimmed.length > 0 && accionistas.length > 1) {
                     const lowerTrimmed = trimmed.toLowerCase();
                     const cleanedRut = cleanRut(trimmed);
                     
@@ -755,22 +1079,26 @@ export function Dashboard() {
                     const scored = accionistas.map((acc: any) => {
                         let score = 0;
                         const nombre = (acc.nombre || "").toLowerCase();
-                        const apellidos = (acc.apellidos || "").toLowerCase();
+                        const apellidosFull = (
+                            [acc.apellido_paterno, acc.apellido_materno]
+                                .filter(Boolean)
+                                .join(" ")
+                        ).toLowerCase();
                         const rut = cleanRut(acc.rut || "");
                         
                         // Match exacto tiene mayor prioridad
                         if (nombre === lowerTrimmed) score += 100;
-                        if (apellidos === lowerTrimmed) score += 100;
+                        if (apellidosFull === lowerTrimmed) score += 100;
                         if (rut === cleanedRut) score += 100;
                         
                         // Match al inicio tiene prioridad media
                         if (nombre.startsWith(lowerTrimmed)) score += 50;
-                        if (apellidos.startsWith(lowerTrimmed)) score += 50;
+                        if (apellidosFull.startsWith(lowerTrimmed)) score += 50;
                         if (rut.startsWith(cleanedRut)) score += 50;
                         
                         // Match parcial tiene menor prioridad
                         if (nombre.includes(lowerTrimmed)) score += 10;
-                        if (apellidos.includes(lowerTrimmed)) score += 10;
+                        if (apellidosFull.includes(lowerTrimmed)) score += 10;
                         if (rut.includes(cleanedRut)) score += 10;
                         
                         return { acc, score };
@@ -785,11 +1113,13 @@ export function Dashboard() {
 
                 setAccionista({
                     nombre: a.nombre ?? "",
-                    apellidos: a.apellidos ?? "",
+                    apellidoPaterno: a.apellido_paterno ?? "",
+                    apellidoMaterno: a.apellido_materno ?? "",
                     rut: a.rut ? formatRut(a.rut) : "",
                     nacionalidad: a.nacionalidad ?? "",
                     direccion: a.direccion ?? "",
                     ciudad: a.ciudad ?? "",
+                    email: a.email ?? "",
                     registro: a.registro ?? "-",
                     fono: a.fono ? formatPhone(a.fono) : "",
                     fechaDefuncion:
@@ -881,20 +1211,22 @@ export function Dashboard() {
         };
 
         fetchData();
-    }, [searchTerm, movimientosPage, currentEmpresaId]);
+    }, [searchTerm, movimientosPage, currentEmpresaId, selectedAccionistaId]);
 
     const handleOpenCreateRegistro = () => {
         // Limpiar accionistaId para asegurar que se cree un nuevo registro
         setAccionistaId(null);
         setRegistroDraft({
             nombre: "",
-            apellidos: "",
+            apellidoPaterno: "",
+            apellidoMaterno: "",
             rut: "",
             nacionalidad: "",
             direccion: "",
             ciudad: "",
+            email: "",
             registro: "",
-            fono: "+569 ",
+            fono: "+56 ",
             fechaDefuncion: "",
             fallecido: false,
             saldo: "",
@@ -937,13 +1269,15 @@ export function Dashboard() {
 
         const draftData = {
             nombre: accionista.nombre || "",
-            apellidos: accionista.apellidos || "",
+            apellidoPaterno: accionista.apellidoPaterno || "",
+            apellidoMaterno: accionista.apellidoMaterno || "",
             rut: accionista.rut || "",
             nacionalidad: accionista.nacionalidad || "",
             direccion: accionista.direccion || "",
             ciudad: accionista.ciudad || "",
+            email: accionista.email || "",
             registro: accionista.registro || "",
-            fono: accionista.fono || "+569 ",
+            fono: accionista.fono || "+56 ",
             fechaDefuncion: fechaDefuncionIso,
             fallecido: !!fechaDefuncionIso,
             saldo: saldoSoloNumero,
@@ -969,10 +1303,12 @@ export function Dashboard() {
             // Construir payload dinámicamente para no enviar campos problemáticos cuando están vacíos
             const payload: any = {
                 nombre: registroDraft.nombre || null,
-                apellidos: registroDraft.apellidos || null,
+                apellido_paterno: registroDraft.apellidoPaterno || null,
+                apellido_materno: registroDraft.apellidoMaterno || null,
                 nacionalidad: registroDraft.nacionalidad || null,
                 direccion: registroDraft.direccion || null,
                 ciudad: registroDraft.ciudad || null,
+                email: registroDraft.email || null,
                 registro: registroDraft.registro || null,
                 fono: registroDraft.fono ? cleanPhone(registroDraft.fono) : null,
                 fecha_defuncion: registroDraft.fechaDefuncion || null,
@@ -1029,14 +1365,20 @@ export function Dashboard() {
             }
 
             const a: any = data;
+            const apellidosTexto =
+                [a.apellido_paterno, a.apellido_materno]
+                    .filter(Boolean)
+                    .join(" ");
 
             setAccionista({
                 nombre: a.nombre ?? "",
-                apellidos: a.apellidos ?? "",
+                apellidoPaterno: a.apellido_paterno ?? "",
+                apellidoMaterno: a.apellido_materno ?? "",
                 rut: a.rut ? formatRut(a.rut) : "",
                 nacionalidad: a.nacionalidad ?? "",
                 direccion: a.direccion ?? "",
                 ciudad: a.ciudad ?? "",
+                email: a.email ?? "",
                 registro: a.registro ?? "-",
                 fono: a.fono ? formatPhone(a.fono) : "",
                 fechaDefuncion:
@@ -1064,7 +1406,7 @@ export function Dashboard() {
             
             // Registrar actividad
             if (a.id) {
-                const nombreCompleto = [a.nombre, a.apellidos].filter(Boolean).join(" ") || "Sin nombre";
+                const nombreCompleto = [a.nombre, apellidosTexto].filter(Boolean).join(" ") || "Sin nombre";
                 const action = isCreating ? "crear_accionista" : "editar_accionista";
                 
                 // Detectar cambios si es edición
@@ -1072,7 +1414,8 @@ export function Dashboard() {
                 if (!isCreating && accionistaOriginal) {
                     const fieldLabels: Record<string, string> = {
                         nombre: "Nombre",
-                        apellidos: "Apellidos",
+                        apellidoPaterno: "Apellido paterno",
+                        apellidoMaterno: "Apellido materno",
                         rut: "RUT",
                         nacionalidad: "Nacionalidad",
                         direccion: "Dirección",
@@ -1429,26 +1772,81 @@ export function Dashboard() {
                                 </h1>
                             </div>
                             <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                                <Input
-                                    label="Buscar"
-                                    radius="sm"
-                                    variant="bordered"
-                                    placeholder="Buscar por nombre, apellido o RUT..."
-                                    className="md:w-80 lg:w-96"
-                                    classNames={{
-                                        inputWrapper: "bg-white border-gray-200",
-                                        input: "text-black placeholder:text-gray-400",
-                                    }}
-                                    value={searchTerm}
-                                    onValueChange={(value) => {
-                                        // Si parece un RUT (contiene números), formatearlo
-                                        if (/\d/.test(value)) {
-                                            setSearchTerm(formatRut(value));
-                                        } else {
-                                            setSearchTerm(value);
-                                        }
-                                    }}
-                                />
+                                <div className="relative md:w-80 lg:w-96">
+                                    <Input
+                                        ref={searchInputRef}
+                                        label="Buscar"
+                                        radius="sm"
+                                        variant="bordered"
+                                        placeholder="Buscar por nombre, apellido o RUT..."
+                                        classNames={{
+                                            inputWrapper: "bg-white border-gray-200",
+                                            input: "text-black placeholder:text-gray-400",
+                                        }}
+                                        value={searchTerm}
+                                        onValueChange={handleSearchChange}
+                                        onBlur={() => {
+                                            // Dar un pequeño margen para permitir el click en las sugerencias
+                                            setTimeout(() => {
+                                                setIsSearchSuggestionsOpen(false);
+                                            }, 150);
+                                        }}
+                                        onFocus={() => {
+                                            if (searchSuggestions.length > 0) {
+                                                setIsSearchSuggestionsOpen(true);
+                                            }
+
+                                            const el = searchInputRef.current;
+                                            if (el) {
+                                                const len = el.value.length;
+                                                // Mover el cursor al final del texto
+                                                requestAnimationFrame(() => {
+                                                    try {
+                                                        el.setSelectionRange(len, len);
+                                                    } catch {
+                                                        // ignorar si el navegador no lo permite
+                                                    }
+                                                });
+                                            }
+                                        }}
+                                    />
+                                    {isSearchSuggestionsOpen && (
+                                        <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg max-h-64 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-gray-100">
+                                            {isSearchLoading ? (
+                                                <div className="flex justify-center py-3">
+                                                    <Spinner size="sm" />
+                                                </div>
+                                            ) : searchSuggestions.length === 0 ? (
+                                                <p className="px-3 py-2 text-xs text-gray-500">
+                                                    No se encontraron coincidencias.
+                                                </p>
+                                            ) : (
+                                                searchSuggestions.map((acc) => (
+                                                    <button
+                                                        key={acc.id}
+                                                        type="button"
+                                                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 cursor-pointer"
+                                                        onClick={() => handleSelectAccionistaFromList(acc)}
+                                                    >
+                                                        <p className="font-medium text-gray-900">
+                                                            {[acc.apellido_paterno, acc.apellido_materno, acc.nombre]
+                                                                .filter(Boolean)
+                                                                .join(" ") || "Sin nombre"}
+                                                        </p>
+                                                        <p className="text-[11px] text-gray-500">
+                                                            {acc.rut
+                                                                ? formatRut(String(acc.rut))
+                                                                : "RUT no registrado"}
+                                                            {acc.registro
+                                                                ? ` · Registro: ${acc.registro}`
+                                                                : ""}
+                                                        </p>
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex gap-2 md:flex-none">
                                     <Button
                                         className="text-black"
@@ -1457,7 +1855,7 @@ export function Dashboard() {
                                         color="success"
                                         onPress={handleOpenCreateRegistro}
                                     >
-                                        Crear registro
+                                        Crear accionista
                                     </Button>
                                     <Button
                                         radius="sm"
@@ -1467,15 +1865,32 @@ export function Dashboard() {
                                     >
                                         Crear usuario
                                     </Button>
-                                    <Button
-                                        radius="sm"
-                                        variant="shadow"
-                                        color="warning"
-                                        className="text-black"
-                                        onPress={() => router.push("/admin/logs")}
-                                    >
-                                        Ver logs
-                                    </Button>
+                                    <Dropdown>
+                                        <DropdownTrigger>
+                                            <Button
+                                                radius="sm"
+                                                variant="shadow"
+                                                color="warning"
+                                                className="text-black"
+                                            >
+                                                Configurar
+                                            </Button>
+                                        </DropdownTrigger>
+                                        <DropdownMenu aria-label="Opciones de configuración">
+                                            <DropdownItem
+                                                key="view-logs"
+                                                onPress={() => router.push("/admin/logs")}
+                                            >
+                                                Ver logs
+                                            </DropdownItem>
+                                            <DropdownItem
+                                                key="select-shareholder"
+                                                onPress={handleOpenSelectAccionista}
+                                            >
+                                                Seleccionar accionista
+                                            </DropdownItem>
+                                        </DropdownMenu>
+                                    </Dropdown>
                                 </div>
                             </div>
                             <div className="mt-3 flex flex-col items-start">
@@ -1527,12 +1942,20 @@ export function Dashboard() {
                             </p>
                             <p className="mt-1 text-base font-semibold text-gray-900">
                                 {
-                                    [accionista.nombre, accionista.apellidos]
+                                    [accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
                                         .filter(Boolean)
                                         .join(" ") || "-"
                                 }
                             </p>
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                    <p className="text-[11px] text-gray-500">Apellido paterno</p>
+                                    <p className="text-sm text-gray-900">{accionista.apellidoPaterno || "-"}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-[11px] text-gray-500">Apellido materno</p>
+                                    <p className="text-sm text-gray-900">{accionista.apellidoMaterno || "-"}</p>
+                                </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">RUT</p>
                                     <p className="text-sm text-gray-900">{accionista.rut || "-"}</p>
@@ -1548,6 +1971,10 @@ export function Dashboard() {
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Ciudad</p>
                                     <p className="text-sm text-gray-900">{accionista.ciudad || "-"}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-[11px] text-gray-500">Email</p>
+                                    <p className="text-sm text-gray-900">{accionista.email || "-"}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Registro</p>
@@ -1638,7 +2065,7 @@ export function Dashboard() {
                                     <div className="h-10 w-full max-w-xs rounded-md border border-gray-200 bg-white px-4 py-1.5">
                                         <p className="text-lg font-semibold text-gray-700 italic font-[cursive] tracking-wide">
                                             {
-                                                [accionista.nombre, accionista.apellidos]
+                                                [accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
                                                     .filter(Boolean)
                                                     .join(" ") || "-"
                                             }
@@ -1667,6 +2094,23 @@ export function Dashboard() {
                                     onPress={handleOpenMovimiento}
                                 >
                                     Agregar traspaso
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    radius="sm"
+                                    variant="bordered"
+                                    color="primary"
+                                    isDisabled={isExportPresenteLoading}
+                                    onPress={handleExportListaPresente}
+                                >
+                                    {isExportPresenteLoading ? (
+                                        <div className="flex items-center gap-2">
+                                            <Spinner size="sm" />
+                                            <span>Exportando...</span>
+                                        </div>
+                                    ) : (
+                                        "Lista presente"
+                                    )}
                                 </Button>
                                 <Button
                                     size="sm"
@@ -2161,7 +2605,7 @@ export function Dashboard() {
                                                     }
                                                 />
                                                 <Input
-                                                    label="Apellidos"
+                                                    label="Apellido paterno"
                                                     variant="bordered"
                                                     classNames={{
                                                         inputWrapper:
@@ -2170,11 +2614,29 @@ export function Dashboard() {
                                                             "text-black placeholder:!text-black",
                                                         label: "text-gray-700",
                                                     }}
-                                                    value={registroDraft.apellidos}
+                                                    value={registroDraft.apellidoPaterno}
                                                     onValueChange={(value) =>
                                                         setRegistroDraft((prev) => ({
                                                             ...prev,
-                                                            apellidos: value,
+                                                            apellidoPaterno: value,
+                                                        }))
+                                                    }
+                                                />
+                                                <Input
+                                                    label="Apellido materno"
+                                                    variant="bordered"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
+                                                        input:
+                                                            "text-black placeholder:!text-black",
+                                                        label: "text-gray-700",
+                                                    }}
+                                                    value={registroDraft.apellidoMaterno}
+                                                    onValueChange={(value) =>
+                                                        setRegistroDraft((prev) => ({
+                                                            ...prev,
+                                                            apellidoMaterno: value,
                                                         }))
                                                     }
                                                 />
@@ -2253,6 +2715,25 @@ export function Dashboard() {
                                                     }
                                                 />
                                                 <Input
+                                                    label="Email"
+                                                    variant="bordered"
+                                                    placeholder="correo@ejemplo.com"
+                                                    classNames={{
+                                                        inputWrapper:
+                                                            "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
+                                                        input:
+                                                            "text-black placeholder:!text-black",
+                                                        label: "text-gray-700",
+                                                    }}
+                                                    value={registroDraft.email}
+                                                    onValueChange={(value) =>
+                                                        setRegistroDraft((prev) => ({
+                                                            ...prev,
+                                                            email: value,
+                                                        }))
+                                                    }
+                                                />
+                                                <Input
                                                     label="Registro"
                                                     variant="bordered"
                                                     classNames={{
@@ -2281,13 +2762,13 @@ export function Dashboard() {
                                                                 "text-black",
                                                             label: "text-gray-700",
                                                         }}
-                                                        value={registroDraft.fono || "+569 "}
+                                                        value={registroDraft.fono || "+56 "}
                                                         onValueChange={(value) => {
-                                                            // No permitir borrar el prefijo +569
-                                                            if (!value.startsWith("+569")) {
+                                                            // No permitir borrar el prefijo +56
+                                                            if (!value.startsWith("+56")) {
                                                                 setRegistroDraft((prev) => ({
                                                                     ...prev,
-                                                                    fono: "+569 ",
+                                                                    fono: "+56 ",
                                                                 }));
                                                                 return;
                                                             }
@@ -2380,6 +2861,108 @@ export function Dashboard() {
                                 )}
                             </ModalContent>
                         </Modal>
+                        <Modal
+                            isOpen={isSelectAccionistaOpen}
+                            onOpenChange={(open) => {
+                                setIsSelectAccionistaOpen(open);
+                                if (!open) {
+                                    setListaAccionistasFilter("");
+                                }
+                            }}
+                        >
+                            <ModalContent className="bg-white text-gray-900">
+                                {(onClose) => (
+                                    <>
+                                        <ModalHeader className="flex flex-col gap-1">
+                                            Seleccionar accionista
+                                            {!isListaAccionistasLoading && (
+                                                <span className="text-xs font-normal text-gray-500">
+                                                    Total accionistas: {listaAccionistas.length}
+                                                </span>
+                                            )}
+                                        </ModalHeader>
+                                        <ModalBody>
+                                            {isListaAccionistasLoading ? (
+                                                <div className="flex justify-center py-6">
+                                                    <Spinner />
+                                                </div>
+                                            ) : listaAccionistas.length === 0 ? (
+                                                <p className="text-sm text-gray-500">
+                                                    No hay accionistas registrados para esta empresa.
+                                                </p>
+                                            ) : (
+                                                <div className="max-h-80 overflow-y-auto divide-y divide-gray-100 pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-gray-100">
+                                                    {(listaAccionistasFilter.trim().length > 0
+                                                        ? listaAccionistas.filter((acc) => {
+                                                              const q = listaAccionistasFilter.trim().toLowerCase();
+                                                              const nombre = String(acc.nombre || "").toLowerCase();
+                                                              const apellidosFull = (
+                                                                  [acc.apellido_paterno, acc.apellido_materno]
+                                                                      .filter(Boolean)
+                                                                      .join(" ")
+                                                              ).toLowerCase();
+                                                              const rut = formatRut(String(acc.rut || "")).toLowerCase();
+                                                              const registro = String(acc.registro || "").toLowerCase();
+                                                              return (
+                                                                  nombre.includes(q) ||
+                                                                  apellidosFull.includes(q) ||
+                                                                  rut.includes(q) ||
+                                                                  registro.includes(q)
+                                                              );
+                                                          })
+                                                        : listaAccionistas
+                                                    ).map((acc) => (
+                                                        <button
+                                                            key={acc.id}
+                                                            type="button"
+                                                            className="w-full text-left px-3 py-2 hover:bg-gray-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 cursor-pointer"
+                                                            onClick={() => {
+                                                                handleSelectAccionistaFromList(acc);
+                                                                onClose();
+                                                            }}
+                                                        >
+                                                            <p className="font-medium text-gray-900">
+                                                                {[acc.apellido_paterno, acc.apellido_materno, acc.nombre]
+                                                                    .filter(Boolean)
+                                                                    .join(" ") || "Sin nombre"}
+                                                            </p>
+                                                            <p className="text-xs text-gray-500">
+                                                                {acc.rut
+                                                                    ? formatRut(String(acc.rut))
+                                                                    : "RUT no registrado"}
+                                                                {acc.registro
+                                                                    ? ` · Registro: ${acc.registro}`
+                                                                    : ""}
+                                                            </p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </ModalBody>
+                                        <ModalFooter>
+                                            <div className="flex w-full items-center justify-end gap-2">
+                                                <Input
+                                                    radius="sm"
+                                                    size="sm"
+                                                    variant="bordered"
+                                                    placeholder="Buscar..."
+                                                    className="flex-1"
+                                                    classNames={{
+                                                        inputWrapper: "bg-white border-gray-200",
+                                                        input: "text-black placeholder:text-gray-400",
+                                                    }}
+                                                    value={listaAccionistasFilter}
+                                                    onValueChange={setListaAccionistasFilter}
+                                                />
+                                                <Button radius="sm" variant="flat" type="button" onPress={() => onClose()}>
+                                                    Cerrar
+                                                </Button>
+                                            </div>
+                                        </ModalFooter>
+                                    </>
+                                )}
+                            </ModalContent>
+                        </Modal>
                         <Modal isOpen={isMovimientoOpen} onOpenChange={setIsMovimientoOpen}>
                             <ModalContent className="bg-white text-gray-900">
                                 {(onClose) => (
@@ -2397,7 +2980,7 @@ export function Dashboard() {
                                             <p className="text-xs font-medium text-gray-500">
                                                 Accionista:{" "}
                                                 <span className="text-gray-900">
-                                                    {[accionista.nombre, accionista.apellidos]
+                                                    {[accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
                                                         .filter(Boolean)
                                                         .join(" ")}
                                                 </span>

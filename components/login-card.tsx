@@ -108,7 +108,9 @@ export function LoginCard() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             classNames={{
-              inputWrapper: "bg-white border-gray-200",
+              inputWrapper:
+                "bg-white border-gray-200 data-[focus=true]:border-black",
+              input: "text-black placeholder:text-gray-400",
             }}
           />
           <Input
@@ -120,7 +122,8 @@ export function LoginCard() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             classNames={{
-              inputWrapper: "bg-white border-gray-200",
+              inputWrapper:
+                "bg-white border-gray-200 data-[focus=true]:border-black",
             }}
             endContent={
               <button

@@ -33,7 +33,14 @@ export default function SelectEmpresaPage() {
         return;
       }
 
-      setEmpresas(data || []);
+      // Ocultar empresas que no deben aparecer en el selector
+      const filtered = (data || []).filter(
+        (empresa) =>
+          empresa.nombre !== "Club Estadio Croata" &&
+          empresa.nombre !== "Hrvatski DOM",
+      );
+
+      setEmpresas(filtered);
       setLoading(false);
     };
 
