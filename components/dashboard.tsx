@@ -280,6 +280,9 @@ export function Dashboard() {
     const [isSearchSuggestionsOpen, setIsSearchSuggestionsOpen] = useState(false);
     const [isSearchLoading, setIsSearchLoading] = useState(false);
 
+    const [isDeleteAccionistaOpen, setIsDeleteAccionistaOpen] = useState(false);
+    const [isDeletingAccionista, setIsDeletingAccionista] = useState(false);
+
     // Obtener el usuario actual y empresa de las cookies al montar el componente
     useEffect(() => {
         const cookies = document.cookie.split(";");
@@ -1290,6 +1293,66 @@ export function Dashboard() {
         setIsRegistroOpen(true);
     };
 
+    const handleDeleteAccionista = async () => {
+        if (!accionistaId) return;
+
+        try {
+            setIsDeletingAccionista(true);
+
+            const { error: movError } = await supabase
+                .from("movimientos")
+                .delete()
+                .eq("accionista_id", accionistaId);
+
+            if (movError) {
+                throw movError;
+            }
+
+            const { error: accError } = await supabase
+                .from("accionistas")
+                .delete()
+                .eq("id", accionistaId);
+
+            if (accError) {
+                throw accError;
+            }
+
+            const nombreCompleto = [accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
+                .filter(Boolean)
+                .join(" ");
+            await logActivity("eliminar", "accionista", accionistaId, nombreCompleto);
+
+            addToast({
+                title: "Accionista eliminado",
+                description: "El accionista y sus movimientos fueron eliminados correctamente.",
+                color: "success",
+                variant: "solid",
+                timeout: 3000,
+                shouldShowTimeoutProgress: true,
+            });
+
+            setAccionista(emptyAccionista);
+            setAccionistaId(null);
+            setSelectedAccionistaId(null);
+            setSearchTerm("");
+            setMovimientos([]);
+            setMovimientosTotal(0);
+            setIsDeleteAccionistaOpen(false);
+        } catch (error) {
+            console.error("Error eliminando accionista:", error);
+            addToast({
+                title: "Error al eliminar",
+                description: "No se pudo eliminar el accionista.",
+                color: "danger",
+                variant: "solid",
+                timeout: 3000,
+                shouldShowTimeoutProgress: true,
+            });
+        } finally {
+            setIsDeletingAccionista(false);
+        }
+    };
+
     const handleSaveRegistro = async () => {
         try {
             setRegistroSaving(true);
@@ -2055,6 +2118,17 @@ export function Dashboard() {
                                     onPress={handleOpenEditRegistro}
                                 >
                                     Editar accionista
+                                </Button>
+                                <Button
+                                    className="text-white"
+                                    radius="sm"
+                                    size="sm"
+                                    variant="shadow"
+                                    color="danger"
+                                    isDisabled={!accionistaId}
+                                    onPress={() => setIsDeleteAccionistaOpen(true)}
+                                >
+                                    Eliminar
                                 </Button>
                             </div>
 
@@ -3270,6 +3344,56 @@ export function Dashboard() {
                                         }}
                                     >
                                         Guardar cambios
+                                    </Button>
+                                </ModalFooter>
+                            </>
+                        )}
+                    </ModalContent>
+                </Modal>
+
+                <Modal
+                    isOpen={isDeleteAccionistaOpen}
+                    onOpenChange={setIsDeleteAccionistaOpen}
+                    size="sm"
+                >
+                    <ModalContent className="bg-white text-gray-900">
+                        {(onClose) => (
+                            <>
+                                <ModalHeader className="flex flex-col gap-1">
+                                    Confirmar eliminación
+                                </ModalHeader>
+                                <ModalBody>
+                                    <p>
+                                        ¿Estás seguro que deseas eliminar a este accionista?
+                                    </p>
+                                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                                        <p className="text-sm font-semibold text-red-700">
+                                            {[accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
+                                                .filter(Boolean)
+                                                .join(" ") || "(Sin nombre)"}
+                                        </p>
+                                    </div>
+                                    <p className="text-sm text-gray-500">
+                                        Esta acción eliminará al accionista y todos sus movimientos asociados permanentemente.
+                                    </p>
+                                </ModalBody>
+                                <ModalFooter>
+                                    <Button
+                                        radius="sm"
+                                        variant="flat"
+                                        onPress={onClose}
+                                        isDisabled={isDeletingAccionista}
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        radius="sm"
+                                        color="danger"
+                                        variant="solid"
+                                        onPress={handleDeleteAccionista}
+                                        isLoading={isDeletingAccionista}
+                                    >
+                                        Eliminar accionista
                                     </Button>
                                 </ModalFooter>
                             </>
