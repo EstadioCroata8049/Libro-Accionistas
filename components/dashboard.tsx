@@ -1294,33 +1294,31 @@ export function Dashboard() {
     };
 
     const handleDeleteAccionista = async () => {
-        if (!accionistaId) return;
+        const idToDelete = selectedAccionistaId ?? accionistaId;
+        if (!idToDelete) return;
 
         try {
             setIsDeletingAccionista(true);
 
-            const { error: movError } = await supabase
-                .from("movimientos")
-                .delete()
-                .eq("accionista_id", accionistaId);
+            const res = await fetch(`/api/accionistas/${idToDelete}`, {
+                method: "DELETE",
+            });
 
-            if (movError) {
-                throw movError;
-            }
-
-            const { error: accError } = await supabase
-                .from("accionistas")
-                .delete()
-                .eq("id", accionistaId);
-
-            if (accError) {
-                throw accError;
+            if (!res.ok) {
+                let message = "No se pudo eliminar el accionista.";
+                try {
+                    const body = await res.json();
+                    if (body?.error) message = body.error;
+                } catch {
+                    // ignore
+                }
+                throw new Error(message);
             }
 
             const nombreCompleto = [accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
                 .filter(Boolean)
                 .join(" ");
-            await logActivity("eliminar", "accionista", accionistaId, nombreCompleto);
+            await logActivity("eliminar", "accionista", idToDelete, nombreCompleto);
 
             addToast({
                 title: "Accionista eliminado",
@@ -1342,7 +1340,10 @@ export function Dashboard() {
             console.error("Error eliminando accionista:", error);
             addToast({
                 title: "Error al eliminar",
-                description: "No se pudo eliminar el accionista.",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "No se pudo eliminar el accionista.",
                 color: "danger",
                 variant: "solid",
                 timeout: 3000,
