@@ -1554,50 +1554,48 @@ export function Dashboard() {
         const saldoNumber = newMovimiento.saldo ? Number(newMovimiento.saldo) : null;
 
         try {
-            const { data, error } = await supabase
-                .from("movimientos")
-                .insert({
-                    accionista_id: accionistaId,
-                    fecha_transferencia: movimientoFecha
-                        ? new Date(
-                              Number(movimientoFecha.year),
-                              Number(movimientoFecha.month) - 1,
-                              Number(movimientoFecha.day),
-                          ).toISOString()
-                        : null,
-                    numero_transferencia: newMovimiento.transferencia || null,
-                    titulo_inutilizado: newMovimiento.tituloAnulado || null,
-                    comprado_a: newMovimiento.compradoA || null,
-                    vendido_a: newMovimiento.vendidoA || null,
-                    titulo_nuevo_comprador: newMovimiento.tituloNuevoComprador || null,
-                    titulo_nuevo_vendedor: newMovimiento.tituloNuevoVendedor || null,
-                    numero_titulo_emitido: newMovimiento.tituloEmitido || null,
-                    compras: comprasNumber,
-                    ventas: ventasNumber,
-                    saldo: saldoNumber,
-                    observaciones: newMovimiento.observaciones || null,
-                })
-                .select("*")
-                .single();
+            const payload = {
+                accionista_id: accionistaId,
+                fecha_transferencia: movimientoFecha
+                    ? new Date(
+                          Number(movimientoFecha.year),
+                          Number(movimientoFecha.month) - 1,
+                          Number(movimientoFecha.day),
+                      ).toISOString()
+                    : null,
+                numero_transferencia: newMovimiento.transferencia || null,
+                titulo_inutilizado: newMovimiento.tituloAnulado || null,
+                comprado_a: newMovimiento.compradoA || null,
+                vendido_a: newMovimiento.vendidoA || null,
+                titulo_nuevo_comprador: newMovimiento.tituloNuevoComprador || null,
+                titulo_nuevo_vendedor: newMovimiento.tituloNuevoVendedor || null,
+                numero_titulo_emitido: newMovimiento.tituloEmitido || null,
+                compras: comprasNumber,
+                ventas: ventasNumber,
+                saldo: saldoNumber,
+                observaciones: newMovimiento.observaciones || null,
+            };
 
-            if (error) {
-                console.error("Error insertando movimiento:", error);
-                console.log("Supabase movimientos error details:", {
-                    message: (error as any).message,
-                    details: (error as any).details,
-                    hint: (error as any).hint,
-                    code: (error as any).code,
-                });
+            const res = await fetch("/api/movimientos", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
 
-                addToast({
-                    title: "Error al guardar el movimiento",
-                    description: "No se pudo guardar el movimiento. Intenta nuevamente.",
-                    color: "danger",
-                    variant: "solid",
-                    timeout: 2000,
-                    shouldShowTimeoutProgress: true,
-                });
-                return;
+            if (!res.ok) {
+                let message = "No se pudo guardar el movimiento.";
+                try {
+                    const body = await res.json();
+                    if (body?.error) message = body.error;
+                } catch {
+                    // ignore
+                }
+                throw new Error(message);
+            }
+
+            const { data } = await res.json();
+            if (!data) {
+                throw new Error("Respuesta inválida del servidor");
             }
 
             // Actualizar la lista local de movimientos con el nuevo registro
@@ -1680,46 +1678,48 @@ export function Dashboard() {
             return;
         }
 
-        // Actualizar en Supabase
+        // Actualizar en servidor
         try {
-            const { error } = await supabase
-                .from("movimientos")
-                .update({
-                    fecha_transferencia: updatedRow.fecha !== "-" 
-                        ? (() => {
-                            const parts = updatedRow.fecha.split(" - ");
-                            if (parts.length === 3) {
-                                const [dd, mm, yyyy] = parts;
-                                return new Date(Number(yyyy), Number(mm) - 1, Number(dd)).toISOString();
-                            }
-                            return null;
-                        })()
-                        : null,
-                    numero_transferencia: updatedRow.transferencia !== "-" ? updatedRow.transferencia : null,
-                    titulo_inutilizado: updatedRow.tituloAnulado !== "-" ? updatedRow.tituloAnulado : null,
-                    comprado_a: updatedRow.compradoA !== "-" ? updatedRow.compradoA : null,
-                    vendido_a: updatedRow.vendidoA !== "-" ? updatedRow.vendidoA : null,
-                    titulo_nuevo_comprador: updatedRow.tituloNuevoComprador !== "-" ? updatedRow.tituloNuevoComprador : null,
-                    titulo_nuevo_vendedor: updatedRow.tituloNuevoVendedor !== "-" ? updatedRow.tituloNuevoVendedor : null,
-                    numero_titulo_emitido: updatedRow.tituloEmitido !== "-" ? updatedRow.tituloEmitido : null,
-                    compras: updatedRow.compras !== "-" ? Number(updatedRow.compras) : null,
-                    ventas: updatedRow.ventas !== "-" ? Number(updatedRow.ventas) : null,
-                    saldo: updatedRow.saldo !== "-" ? Number(updatedRow.saldo) : null,
-                    observaciones: updatedRow.observaciones !== "-" ? updatedRow.observaciones : null,
-                })
-                .eq("id", editingRowId);
+            const payload = {
+                id: editingRowId,
+                fecha_transferencia: updatedRow.fecha !== "-" 
+                    ? (() => {
+                        const parts = updatedRow.fecha.split(" - ");
+                        if (parts.length === 3) {
+                            const [dd, mm, yyyy] = parts;
+                            return new Date(Number(yyyy), Number(mm) - 1, Number(dd)).toISOString();
+                        }
+                        return null;
+                    })()
+                    : null,
+                numero_transferencia: updatedRow.transferencia !== "-" ? updatedRow.transferencia : null,
+                titulo_inutilizado: updatedRow.tituloAnulado !== "-" ? updatedRow.tituloAnulado : null,
+                comprado_a: updatedRow.compradoA !== "-" ? updatedRow.compradoA : null,
+                vendido_a: updatedRow.vendidoA !== "-" ? updatedRow.vendidoA : null,
+                titulo_nuevo_comprador: updatedRow.tituloNuevoComprador !== "-" ? updatedRow.tituloNuevoComprador : null,
+                titulo_nuevo_vendedor: updatedRow.tituloNuevoVendedor !== "-" ? updatedRow.tituloNuevoVendedor : null,
+                numero_titulo_emitido: updatedRow.tituloEmitido !== "-" ? updatedRow.tituloEmitido : null,
+                compras: updatedRow.compras !== "-" ? Number(updatedRow.compras) : null,
+                ventas: updatedRow.ventas !== "-" ? Number(updatedRow.ventas) : null,
+                saldo: updatedRow.saldo !== "-" ? Number(updatedRow.saldo) : null,
+                observaciones: updatedRow.observaciones !== "-" ? updatedRow.observaciones : null,
+            };
 
-            if (error) {
-                console.error("Error actualizando movimiento:", error);
-                addToast({
-                    title: "Error al actualizar",
-                    description: "No se pudo guardar el movimiento en la base de datos.",
-                    color: "danger",
-                    variant: "solid",
-                    timeout: 2000,
-                    shouldShowTimeoutProgress: true,
-                });
-                return;
+            const res = await fetch("/api/movimientos", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+
+            if (!res.ok) {
+                let message = "No se pudo guardar el movimiento en la base de datos.";
+                try {
+                    const body = await res.json();
+                    if (body?.error) message = body.error;
+                } catch {
+                    // ignore
+                }
+                throw new Error(message);
             }
 
             // Registrar actividad de edición con cambios detectados

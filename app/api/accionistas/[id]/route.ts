@@ -3,16 +3,20 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function DELETE(
   _request: Request,
-  context: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
-  const { id } = await context.params;
+  const { id } = context.params;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
+    const missing: string[] = [];
+    if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!serviceRoleKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+
     return NextResponse.json(
-      { error: "Missing SUPABASE configuration" },
+      { error: `Missing env vars: ${missing.join(", ")}` },
       { status: 500 }
     );
   }
