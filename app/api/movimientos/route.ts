@@ -24,6 +24,60 @@ function getSupabaseAdmin() {
   });
 }
 
+export async function GET(request: Request) {
+  const notLogged = await requireLogin();
+  if (notLogged) return notLogged;
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    const missing: string[] = [];
+    if (!supabaseUrl) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!serviceRoleKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+
+    return NextResponse.json(
+      { error: `Missing env vars: ${missing.join(", ")}` },
+      { status: 500 },
+    );
+  }
+
+  const url = new URL(request.url);
+  const accionistaId = url.searchParams.get("accionista_id");
+  const pageRaw = url.searchParams.get("page") ?? "0";
+  const pageSizeRaw = url.searchParams.get("page_size") ?? "50";
+
+  if (!accionistaId) {
+    return NextResponse.json(
+      { error: "accionista_id is required" },
+      { status: 400 },
+    );
+  }
+
+  const page = Number(pageRaw);
+  const pageSize = Number(pageSizeRaw);
+  if (!Number.isFinite(page) || page < 0 || !Number.isFinite(pageSize) || pageSize <= 0) {
+    return NextResponse.json(
+      { error: "Invalid pagination params" },
+      { status: 400 },
+    );
+  }
+
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await supabaseAdmin
+    .from("movimientos")
+    .select("*", { count: "exact" })
+    .eq("accionista_id", accionistaId)
+    .order("fecha_transferencia", { ascending: true })
+    .range(from, to);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ data: data ?? [], count: count ?? 0 });
+}
+
 export async function POST(request: Request) {
   const notLogged = await requireLogin();
   if (notLogged) return notLogged;

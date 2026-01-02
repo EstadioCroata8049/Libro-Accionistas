@@ -1147,26 +1147,28 @@ export function Dashboard() {
 
                 // 2) Paginación de movimientos para ese accionista
                 const from = movimientosPage * MOV_PAGE_SIZE;
-                const to = from + MOV_PAGE_SIZE - 1;
 
-                const { data: movs, error: movsError, count } = await supabase
-                    .from("movimientos")
-                    .select("*", { count: "exact" })
-                    .eq("accionista_id", a.id)
-                    .order("fecha_transferencia", { ascending: true })
-                    .range(from, to);
+                const res = await fetch(
+                    `/api/movimientos?accionista_id=${encodeURIComponent(a.id)}&page=${movimientosPage}&page_size=${MOV_PAGE_SIZE}`,
+                );
 
-                if (movsError) {
-                    console.error("Error loading movimientos:", movsError);
-                    console.log("Supabase movimientos error details:", {
-                        message: (movsError as any).message,
-                        details: (movsError as any).details,
-                        hint: (movsError as any).hint,
-                        code: (movsError as any).code,
-                    });
+                if (!res.ok) {
+                    let message = "No se pudieron cargar los movimientos.";
+                    try {
+                        const body = await res.json();
+                        if (body?.error) message = body.error;
+                    } catch {
+                        // ignore
+                    }
+                    console.error("Error loading movimientos:", message);
+                    setMovimientos([]);
+                    setMovimientosTotal(0);
+                    return;
                 }
 
-                if (!movsError && movs) {
+                const { data: movs, count } = await res.json();
+
+                if (movs) {
                     const mapped = movs.map((m: any, index: number) => ({
                         id: m.id,
                         displayId: from + index + 1,
