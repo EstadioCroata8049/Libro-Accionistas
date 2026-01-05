@@ -2891,11 +2891,11 @@ export function Dashboard() {
                                                                     ? (() => {
                                                                           const [year, month, day] = registroDraft.fechaDefuncion.split("-");
                                                                           if (!year || !month || !day) return null;
-                                                                          return {
-                                                                              year: Number(year),
-                                                                              month: Number(month),
-                                                                              day: Number(day),
-                                                                          } as any;
+                                                                          const y = Number(year);
+                                                                          const m = Number(month);
+                                                                          const d = Number(day);
+                                                                          if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+                                                                          return new CalendarDate(y, m, d);
                                                                       })()
                                                                     : null
                                                             }
