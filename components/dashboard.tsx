@@ -238,6 +238,7 @@ export function Dashboard() {
     const [accionistaId, setAccionistaId] = useState<string | null>(null);
     const [selectedAccionistaId, setSelectedAccionistaId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
     const [isRegistroOpen, setIsRegistroOpen] = useState(false);
     const [registroDraft, setRegistroDraft] = useState({
         nombre: "",
@@ -279,6 +280,16 @@ export function Dashboard() {
     const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
     const [isSearchSuggestionsOpen, setIsSearchSuggestionsOpen] = useState(false);
     const [isSearchLoading, setIsSearchLoading] = useState(false);
+
+    useEffect(() => {
+        const t = window.setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 350);
+
+        return () => {
+            window.clearTimeout(t);
+        };
+    }, [searchTerm]);
 
     const [isDeleteAccionistaOpen, setIsDeleteAccionistaOpen] = useState(false);
     const [isDeletingAccionista, setIsDeletingAccionista] = useState(false);
@@ -427,8 +438,52 @@ export function Dashboard() {
             return;
         }
 
-        setSearchSuggestions(data || []);
-        setIsSearchSuggestionsOpen((data || []).length > 0);
+        // Filtrar y ordenar por relevancia
+        const lowerTerm = term.toLowerCase();
+        const cleanedRutTerm = term.replace(/[^0-9kK]/g, "");
+        
+        const scored = (data || []).map((acc: any) => {
+            let score = 0;
+            const nombre = (acc.nombre || "").toLowerCase();
+            const apellidoPaterno = (acc.apellido_paterno || "").toLowerCase();
+            const apellidoMaterno = (acc.apellido_materno || "").toLowerCase();
+            const apellidosFull = [apellidoPaterno, apellidoMaterno].filter(Boolean).join(" ");
+            const nombreCompleto = [apellidoPaterno, apellidoMaterno, nombre].filter(Boolean).join(" ");
+            const rut = (acc.rut || "").replace(/[^0-9kK]/g, "");
+            
+            // Match exacto tiene máxima prioridad
+            if (nombre === lowerTerm) score += 100;
+            if (apellidoPaterno === lowerTerm) score += 100;
+            if (apellidoMaterno === lowerTerm) score += 100;
+            if (apellidosFull === lowerTerm) score += 100;
+            if (rut === cleanedRutTerm) score += 100;
+            
+            // Match al inicio tiene prioridad alta
+            if (nombre.startsWith(lowerTerm)) score += 50;
+            if (apellidoPaterno.startsWith(lowerTerm)) score += 50;
+            if (apellidoMaterno.startsWith(lowerTerm)) score += 50;
+            if (apellidosFull.startsWith(lowerTerm)) score += 50;
+            if (nombreCompleto.startsWith(lowerTerm)) score += 50;
+            if (rut.startsWith(cleanedRutTerm)) score += 50;
+            
+            // Match parcial tiene menor prioridad
+            if (nombre.includes(lowerTerm)) score += 10;
+            if (apellidoPaterno.includes(lowerTerm)) score += 10;
+            if (apellidoMaterno.includes(lowerTerm)) score += 10;
+            if (apellidosFull.includes(lowerTerm)) score += 10;
+            if (rut.includes(cleanedRutTerm)) score += 10;
+            
+            return { acc, score };
+        });
+        
+        // Filtrar solo los que tienen score > 0 y ordenar por score descendente
+        const filtered = scored
+            .filter(item => item.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .map(item => item.acc);
+
+        setSearchSuggestions(filtered);
+        setIsSearchSuggestionsOpen(filtered.length > 0);
         setIsSearchLoading(false);
     };
 
@@ -497,26 +552,37 @@ export function Dashboard() {
                 return;
             }
 
+            // Obtener saldos finales de todos los accionistas desde API server
+            const accionistasArr = accionistas as any[];
+            const ids = accionistasArr.map((a) => a.id).filter(Boolean);
+            let latestSaldoByAccionistaId: Record<string, number> = {};
+
+            if (ids.length > 0) {
+                try {
+                    const res = await fetch("/api/movimientos/saldos", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ accionista_ids: ids }),
+                    });
+
+                    if (res.ok) {
+                        const { saldos } = await res.json();
+                        latestSaldoByAccionistaId = saldos || {};
+                    } else {
+                        console.error("Error cargando saldos desde API:", await res.text());
+                    }
+                } catch (err) {
+                    console.error("Error al llamar API de saldos:", err);
+                }
+            }
+
             const rows: any[] = [];
 
-            for (const a of accionistas as any[]) {
-                // Obtener último movimiento del accionista (para saldo y observaciones)
-                const { data: movs, error: movError } = await supabase
-                    .from("movimientos")
-                    .select("saldo, observaciones, fecha_transferencia")
-                    .eq("accionista_id", a.id)
-                    .order("fecha_transferencia", { ascending: false })
-                    .limit(1);
-
-                if (movError) {
-                    console.error("Error cargando movimientos para exportar:", movError);
-                }
-
-                const ultimoMov = movs && movs.length > 0 ? movs[0] : null;
-
+            for (const a of accionistasArr) {
+                const saldoFromMov = a.id ? latestSaldoByAccionistaId[String(a.id)] : undefined;
                 const saldoFinal =
-                    ultimoMov?.saldo != null
-                        ? ultimoMov.saldo
+                    saldoFromMov != null
+                        ? saldoFromMov
                         : a.saldo_acciones != null
                             ? a.saldo_acciones
                             : null;
@@ -628,6 +694,30 @@ export function Dashboard() {
                 return;
             }
 
+            // Calcular saldo final por accionista usando último movimiento (igual que en tarjeta dashboard)
+            const accionistasArr = accionistas as any[];
+            const ids = accionistasArr.map((a) => a.id).filter(Boolean);
+            let latestSaldoByAccionistaId: Record<string, number> = {};
+
+            if (ids.length > 0) {
+                try {
+                    const res = await fetch("/api/movimientos/saldos", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ accionista_ids: ids }),
+                    });
+
+                    if (res.ok) {
+                        const { saldos } = await res.json();
+                        latestSaldoByAccionistaId = saldos || {};
+                    } else {
+                        console.error("Error cargando saldos desde API:", await res.text());
+                    }
+                } catch (err) {
+                    console.error("Error al llamar API de saldos:", err);
+                }
+            }
+
             const escapeHtml = (value: any) =>
                 String(value ?? "")
                     .replace(/&/g, "&amp;")
@@ -643,8 +733,8 @@ export function Dashboard() {
             const fecha = `${dd}-${mm}-${yyyy}`;
             const tituloEmpresa = currentEmpresaNombre ? ` - ${currentEmpresaNombre}` : "";
 
-            const rowsHtml = (accionistas as any[])
-                .map((a, idx) => {
+            const rowsHtml = accionistasArr
+                .map((a: any, idx: number) => {
                     const numero = idx + 1;
                     const apellidoPaterno = a.apellido_paterno ?? "";
                     const apellidoMaterno = a.apellido_materno ?? "";
@@ -652,7 +742,9 @@ export function Dashboard() {
                     const rut = a.rut ? formatRut(String(a.rut)) : "";
                     const email = a.email ?? "";
                     const celular = a.fono ? formatPhone(String(a.fono)) : "";
-                    const totalAcciones = a.saldo_acciones ?? "";
+                    // Usar saldo del último movimiento si existe, sino saldo_acciones
+                    const saldoFromMov = a.id ? latestSaldoByAccionistaId[String(a.id)] : undefined;
+                    const totalAcciones = saldoFromMov != null ? String(saldoFromMov) : (a.saldo_acciones ?? "");
 
                     return `
                         <tr>
@@ -1051,7 +1143,7 @@ export function Dashboard() {
                     .select("*")
                     .eq("empresa_id", currentEmpresaId);
 
-                const trimmed = searchTerm.trim();
+                const trimmed = debouncedSearchTerm.trim();
                 if (trimmed.length > 0) {
                     // Limpiar el RUT para buscar sin formato
                     const cleanedRut = cleanRut(trimmed);
@@ -1073,7 +1165,7 @@ export function Dashboard() {
                 // Encontrar el mejor match basado en relevancia
                 let bestMatch = accionistas[0];
                 
-                const trimmed = searchTerm.trim();
+                const trimmed = debouncedSearchTerm.trim();
                 if (!selectedAccionistaId && trimmed.length > 0 && accionistas.length > 1) {
                     const lowerTrimmed = trimmed.toLowerCase();
                     const cleanedRut = cleanRut(trimmed);
@@ -1216,7 +1308,7 @@ export function Dashboard() {
         };
 
         fetchData();
-    }, [searchTerm, movimientosPage, currentEmpresaId, selectedAccionistaId]);
+    }, [debouncedSearchTerm, movimientosPage, currentEmpresaId, selectedAccionistaId]);
 
     const handleOpenCreateRegistro = () => {
         // Limpiar accionistaId para asegurar que se cree un nuevo registro
@@ -3054,14 +3146,14 @@ export function Dashboard() {
                                             Nuevo movimiento
                                         </ModalHeader>
                                         <ModalBody>
-                                            <p className="text-xs font-medium text-gray-500">
-                                                Accionista:{" "}
-                                                <span className="text-gray-900">
+                                            <div className="rounded-md border border-red-700 bg-red-700 px-3 py-2">
+                                                <p className="text-[11px] font-medium text-white/90">Accionista</p>
+                                                <p className="text-base font-semibold text-white">
                                                     {[accionista.nombre, accionista.apellidoPaterno, accionista.apellidoMaterno]
                                                         .filter(Boolean)
                                                         .join(" ")}
-                                                </span>
-                                            </p>
+                                                </p>
+                                            </div>
                                             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                                                 <DatePicker
                                                     label="Fecha transferencia"
