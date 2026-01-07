@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Input } from "@heroui/input";
@@ -12,6 +13,11 @@ import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spin
 import { CalendarDate } from "@internationalized/date";
 
 import { supabase } from "@/lib/supabaseClient";
+
+const SearchInput = dynamic(async () => {
+    const mod = await import("@heroui/input");
+    return mod.Input;
+}, { ssr: false });
 
 const MOV_PAGE_SIZE = 50;
 
@@ -231,6 +237,7 @@ export function Dashboard() {
     const pdfInputRef = useRef<HTMLInputElement | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
     const [isTableMounted, setIsTableMounted] = useState(false);
+    const [isClientMounted, setIsClientMounted] = useState(false);
     const [movimientos, setMovimientos] = useState<any[]>([]);
     const [movimientosTotal, setMovimientosTotal] = useState(0);
     const [movimientosPage, setMovimientosPage] = useState(0);
@@ -1115,6 +1122,7 @@ export function Dashboard() {
 
     useEffect(() => {
         setIsTableMounted(true);
+        setIsClientMounted(true);
 
         const fetchData = async () => {
             // No cargar datos si no hay empresa seleccionada
@@ -1267,9 +1275,9 @@ export function Dashboard() {
                         fecha: m.fecha_transferencia
                             ? (() => {
                                   const d = new Date(m.fecha_transferencia);
-                                  const dd = String(d.getDate()).padStart(2, "0");
-                                  const mm = String(d.getMonth() + 1).padStart(2, "0");
-                                  const yyyy = d.getFullYear();
+                                  const dd = String(d.getUTCDate()).padStart(2, "0");
+                                  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+                                  const yyyy = d.getUTCFullYear();
                                   return `${dd} - ${mm} - ${yyyy}`;
                               })()
                             : "-",
@@ -1652,9 +1660,11 @@ export function Dashboard() {
                 accionista_id: accionistaId,
                 fecha_transferencia: movimientoFecha
                     ? new Date(
-                          Number(movimientoFecha.year),
-                          Number(movimientoFecha.month) - 1,
-                          Number(movimientoFecha.day),
+                          Date.UTC(
+                              Number(movimientoFecha.year),
+                              Number(movimientoFecha.month) - 1,
+                              Number(movimientoFecha.day),
+                          )
                       ).toISOString()
                     : null,
                 numero_transferencia: newMovimiento.transferencia || null,
@@ -1699,9 +1709,9 @@ export function Dashboard() {
                 fecha: data.fecha_transferencia
                     ? (() => {
                           const d = new Date(data.fecha_transferencia);
-                          const dd = String(d.getDate()).padStart(2, "0");
-                          const mm = String(d.getMonth() + 1).padStart(2, "0");
-                          const yyyy = d.getFullYear();
+                          const dd = String(d.getUTCDate()).padStart(2, "0");
+                          const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+                          const yyyy = d.getUTCFullYear();
                           return `${dd} - ${mm} - ${yyyy}`;
                       })()
                     : "-",
@@ -1759,6 +1769,20 @@ export function Dashboard() {
         }
     };
 
+    const handleMovimientosKeyDownCapture = (event: any) => {
+        if (!isEditMode) return;
+
+        if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+            return;
+        }
+
+        const target = event.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea") {
+            event.stopPropagation();
+        }
+    };
+
     const handleConfirmEditMovimiento = async () => {
         if (editingRowId == null || !editingMovimiento) {
             setIsConfirmEditOpen(false);
@@ -1781,7 +1805,7 @@ export function Dashboard() {
                         const parts = updatedRow.fecha.split(" - ");
                         if (parts.length === 3) {
                             const [dd, mm, yyyy] = parts;
-                            return new Date(Number(yyyy), Number(mm) - 1, Number(dd)).toISOString();
+                            return new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd))).toISOString();
                         }
                         return null;
                     })()
@@ -1931,42 +1955,43 @@ export function Dashboard() {
                             </div>
                             <div className="flex flex-col gap-3 md:flex-row md:items-center">
                                 <div className="relative md:w-80 lg:w-96">
-                                    <Input
-                                        ref={searchInputRef}
-                                        label="Buscar"
-                                        radius="sm"
-                                        variant="bordered"
-                                        placeholder="Buscar por nombre, apellido o RUT..."
-                                        classNames={{
-                                            inputWrapper: "bg-white border-gray-200",
-                                            input: "text-black placeholder:text-gray-400",
-                                        }}
-                                        value={searchTerm}
-                                        onValueChange={handleSearchChange}
-                                        onBlur={() => {
-                                            // Dar un pequeño margen para permitir el click en las sugerencias
-                                            setTimeout(() => {
-                                                setIsSearchSuggestionsOpen(false);
-                                            }, 150);
-                                        }}
-                                        onFocus={() => {
-                                            if (searchSuggestions.length > 0) {
-                                                setIsSearchSuggestionsOpen(true);
-                                            }
+                                    <SearchInput
+                                            id="search-input"
+                                            ref={searchInputRef}
+                                            label="Buscar"
+                                            radius="sm"
+                                            variant="bordered"
+                                            placeholder="Buscar por nombre, apellido o RUT..."
+                                            classNames={{
+                                                inputWrapper: "bg-white border-gray-200",
+                                                input: "text-black placeholder:text-gray-400",
+                                            }}
+                                            value={searchTerm}
+                                            onValueChange={handleSearchChange}
+                                            onBlur={() => {
+                                                // Dar un pequeño margen para permitir el click en las sugerencias
+                                                setTimeout(() => {
+                                                    setIsSearchSuggestionsOpen(false);
+                                                }, 150);
+                                            }}
+                                            onFocus={() => {
+                                                if (searchSuggestions.length > 0) {
+                                                    setIsSearchSuggestionsOpen(true);
+                                                }
 
-                                            const el = searchInputRef.current;
-                                            if (el) {
-                                                const len = el.value.length;
-                                                // Mover el cursor al final del texto
-                                                requestAnimationFrame(() => {
-                                                    try {
-                                                        el.setSelectionRange(len, len);
-                                                    } catch {
-                                                        // ignorar si el navegador no lo permite
-                                                    }
-                                                });
-                                            }
-                                        }}
+                                                const el = searchInputRef.current;
+                                                if (el) {
+                                                    const len = el.value.length;
+                                                    // Mover el cursor al final del texto
+                                                    requestAnimationFrame(() => {
+                                                        try {
+                                                            el.setSelectionRange(len, len);
+                                                        } catch {
+                                                            // ignorar si el navegador no lo permite
+                                                        }
+                                                    });
+                                                }
+                                            }}
                                     />
                                     {isSearchSuggestionsOpen && (
                                         <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg max-h-64 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-gray-100">
@@ -2318,7 +2343,10 @@ export function Dashboard() {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                        <div
+                            className="flex-1 overflow-y-auto overflow-x-auto"
+                            onKeyDownCapture={handleMovimientosKeyDownCapture}
+                        >
                             <p
                                 id="movimientos-description"
                                 className="sr-only"
@@ -2336,7 +2364,7 @@ export function Dashboard() {
                                     }}
                                 >
                                     <TableHeader>
-                                        <TableColumn className="w-[2.5rem]">
+                                        <TableColumn className="min-w-[6.75rem]">
                                             <span className="block leading-tight">
                                                 FECHA
                                                 <br />
@@ -2367,9 +2395,9 @@ export function Dashboard() {
                                                 VENDEDOR
                                             </span>
                                         </TableColumn>
-                                        <TableColumn className="w-[4rem]">COMPRAS</TableColumn>
-                                        <TableColumn className="w-[4rem]">VENTAS</TableColumn>
-                                        <TableColumn className="w-[4rem]">SALDO</TableColumn>
+                                        <TableColumn className="w-[7.5rem]">COMPRAS</TableColumn>
+                                        <TableColumn className="w-[7.5rem]">VENTAS</TableColumn>
+                                        <TableColumn className="w-[7.5rem]">SALDO</TableColumn>
                                         <TableColumn>OBSERVACIONES</TableColumn>
                                         <TableColumn className="w-[5.5rem]">
                                             <span className="block leading-tight">
@@ -2389,6 +2417,7 @@ export function Dashboard() {
                                                                 variant="bordered"
                                                                 radius="sm"
                                                                 size="sm"
+                                                                className="w-[7.25rem]"
                                                                 classNames={{
                                                                     inputWrapper:
                                                                         "!bg-white !border !border-gray-300 hover:!border-gray-400 focus-within:!border-gray-500",
