@@ -2779,8 +2779,8 @@ export function Dashboard() {
                                     >
                                         <ModalHeader className="flex flex-col gap-1">
                                             {accionistaId
-                                                ? "Editar registro (página del libro)"
-                                                : "Crear registro (página del libro)"}
+                                                ? "Editar accionista"
+                                                : "Crear accionista"}
                                         </ModalHeader>
                                         <ModalBody>
                                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2915,7 +2915,6 @@ export function Dashboard() {
                                                 <Input
                                                     label="Email"
                                                     variant="bordered"
-                                                    placeholder="correo@ejemplo.com"
                                                     classNames={{
                                                         inputWrapper:
                                                             "bg-white border-gray-300 hover:border-gray-400 data-[focus=true]:border-gray-500",
@@ -3052,7 +3051,7 @@ export function Dashboard() {
                                                 radius="sm"
                                                 type="submit"
                                             >
-                                                Guardar registro
+                                                Guardar accionista
                                             </Button>
                                         </ModalFooter>
                                     </form>
