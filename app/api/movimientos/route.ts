@@ -69,6 +69,7 @@ export async function GET(request: Request) {
     .select("*", { count: "exact" })
     .eq("accionista_id", accionistaId)
     .order("fecha_transferencia", { ascending: true })
+    .order("id", { ascending: true })
     .range(from, to);
 
   if (error) {

@@ -105,32 +105,33 @@ const ExportIcon = (props: any) => {
 // Función para formatear RUT chileno: XX.XXX.XXX-X
 const formatRut = (value: string): string => {
     // Remover todo excepto números y K/k
-    let cleaned = value.replace(/[^0-9kK]/g, "");
-    
-    // Separar números y letras
-    const numbers = cleaned.replace(/[kK]/g, "");
-    const hasK = /[kK]/.test(cleaned);
-    
-    // El cuerpo solo puede tener números (máximo 8)
-    const body = numbers.slice(0, 8);
-    
-    // El dígito verificador puede ser número o K (solo si hay números antes)
-    let dv = "";
-    if (body.length > 0) {
-        if (hasK) {
-            dv = "K";
-        } else if (numbers.length > body.length) {
-            dv = numbers.slice(body.length, body.length + 1);
-        }
+    let cleaned = value.replace(/[^0-9kK]/g, "").toUpperCase();
+
+    // Limitar el largo máximo a 9 caracteres (8 cuerpo + 1 DV)
+    if (cleaned.length > 9) {
+        cleaned = cleaned.slice(0, 9);
     }
-    
-    if (body.length === 0) return "";
-    if (dv === "") return body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    
-    // Formatear el cuerpo con puntos
+
+    if (cleaned.length <= 1) return cleaned;
+
+    // Detectar si el usuario está escribiendo el guión explícitamente
+    const endsWithDash = value.endsWith("-");
+    let body = "";
+    let dv = "";
+
+    if (endsWithDash) {
+        body = cleaned;
+        dv = "";
+    } else {
+        // Si no hay guión final, asumimos que el último dígito es el DV
+        body = cleaned.slice(0, -1);
+        dv = cleaned.slice(-1);
+    }
+
+    // Formatear cuerpo con puntos
     const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    
-    return `${formattedBody}-${dv}`;
+
+    return endsWithDash ? `${formattedBody}-` : `${formattedBody}-${dv}`;
 };
 
 // Función para limpiar RUT (quitar formato, dejar solo números y dígito verificador)
@@ -1331,7 +1332,7 @@ export function Dashboard() {
             ciudad: "",
             email: "",
             registro: "",
-            fono: "+56 ",
+            fono: "",
             fechaDefuncion: "",
             fallecido: false,
             saldo: "",
@@ -1372,7 +1373,7 @@ export function Dashboard() {
             return match ? match[0] : "";
         })();
 
-        const draftData = {
+        setRegistroDraft({
             nombre: accionista.nombre || "",
             apellidoPaterno: accionista.apellidoPaterno || "",
             apellidoMaterno: accionista.apellidoMaterno || "",
@@ -1382,16 +1383,13 @@ export function Dashboard() {
             ciudad: accionista.ciudad || "",
             email: accionista.email || "",
             registro: accionista.registro || "",
-            fono: accionista.fono || "+56 ",
+            fono: accionista.fono ? cleanPhone(accionista.fono) : "",
             fechaDefuncion: fechaDefuncionIso,
             fallecido: !!fechaDefuncionIso,
             saldo: saldoSoloNumero,
             firma: accionista.firma || "",
-        };
-        
-        setRegistroDraft(draftData);
-        // Guardar estado original para detectar cambios después
-        setAccionistaOriginal({ ...draftData });
+        });
+
         setIsRegistroOpen(true);
     };
 
@@ -2959,22 +2957,13 @@ export function Dashboard() {
                                                                 "text-black",
                                                             label: "text-gray-700",
                                                         }}
-                                                        value={registroDraft.fono || "+56 "}
-                                                        onValueChange={(value) => {
-                                                            // No permitir borrar el prefijo +56
-                                                            if (!value.startsWith("+56")) {
-                                                                setRegistroDraft((prev) => ({
-                                                                    ...prev,
-                                                                    fono: "+56 ",
-                                                                }));
-                                                                return;
-                                                            }
-                                                            const formatted = formatPhone(value);
+                                                        value={registroDraft.fono}
+                                                        onValueChange={(value) =>
                                                             setRegistroDraft((prev) => ({
                                                                 ...prev,
-                                                                fono: formatted,
-                                                            }));
-                                                        }}
+                                                                fono: value,
+                                                            }))
+                                                        }
                                                     />
                                                 </div>
                                                 <div className="sm:col-span-2 flex flex-col gap-2">
