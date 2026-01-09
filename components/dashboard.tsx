@@ -1565,6 +1565,7 @@ export function Dashboard() {
             });
 
             setAccionistaId(a.id ?? null);
+            setSelectedAccionistaId(a.id ?? null);
             setAccionistaPdfUrl(a.pdf_url ?? null);
             setMovimientos([]);
             setMovimientosPage(0);
@@ -1908,16 +1909,15 @@ export function Dashboard() {
     };
 
     const handleCancelEditMovimiento = () => {
-        if (editingRowId != null) {
-            const original = movimientos.find((row) => row.id === editingRowId);
-            if (original) {
-                setEditingMovimiento({ ...original });
-            } else {
-                setEditingMovimiento(null);
-                setEditingRowId(null);
-            }
+        if (editingRowId != null && editingMovimiento) {
+            setMovimientos((prev) =>
+                prev.map((row) => (row.id === editingRowId ? { ...row, ...editingMovimiento } : row))
+            );
         }
+        setEditingRowId(null);
+        setEditingMovimiento(null);
         setIsConfirmEditOpen(false);
+        setIsEditMode(false);
     };
 
     return (
@@ -2291,54 +2291,78 @@ export function Dashboard() {
                                 >
                                     Agregar traspaso
                                 </Button>
-                                <Button
-                                    size="sm"
-                                    radius="sm"
-                                    variant="bordered"
-                                    color="primary"
-                                    isDisabled={isExportPresenteLoading}
-                                    onPress={handleExportListaPresente}
-                                >
-                                    {isExportPresenteLoading ? (
-                                        <div className="flex items-center gap-2">
-                                            <Spinner size="sm" />
-                                            <span>Exportando...</span>
-                                        </div>
-                                    ) : (
-                                        "Lista presente"
-                                    )}
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    radius="sm"
-                                    variant={isEditMode ? "solid" : "shadow"}
-                                    color={isEditMode ? "warning" : "primary"}
-                                    onPress={() => {
-                                        setIsEditMode((prev) => !prev);
-                                        setEditingRowId(null);
-                                        setEditingMovimiento(null);
-                                        setIsConfirmEditOpen(false);
-                                    }}
-                                >
-                                    {isEditMode ? "Salir de edición" : "Editar"}
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    radius="sm"
-                                    variant="bordered"
-                                    color="primary"
-                                    isDisabled={isExportTotalLoading}
-                                    onPress={handleExportResumenAccionista}
-                                >
-                                    {isExportTotalLoading ? (
-                                        <div className="flex items-center gap-2">
-                                            <Spinner size="sm" />
-                                            <span>Exportando...</span>
-                                        </div>
-                                    ) : (
-                                        "Exportar total"
-                                    )}
-                                </Button>
+                                <Dropdown>
+                                    <DropdownTrigger>
+                                        <Button
+                                            size="sm"
+                                            radius="sm"
+                                            variant="bordered"
+                                            color="primary"
+                                            isDisabled={isExportPresenteLoading || isExportTotalLoading}
+                                        >
+                                            Descargar
+                                        </Button>
+                                    </DropdownTrigger>
+                                    <DropdownMenu aria-label="Opciones de descarga">
+                                        <DropdownItem
+                                            key="lista-presente"
+                                            isDisabled={isExportPresenteLoading}
+                                            onPress={handleExportListaPresente}
+                                        >
+                                            {isExportPresenteLoading ? "Exportando..." : "Lista presente"}
+                                        </DropdownItem>
+                                        <DropdownItem
+                                            key="exportar-total"
+                                            isDisabled={isExportTotalLoading}
+                                            onPress={handleExportResumenAccionista}
+                                        >
+                                            {isExportTotalLoading ? "Exportando..." : "Exportar total"}
+                                        </DropdownItem>
+                                    </DropdownMenu>
+                                </Dropdown>
+
+                                {!isEditMode ? (
+                                    <Button
+                                        size="sm"
+                                        radius="sm"
+                                        variant="shadow"
+                                        color="primary"
+                                        onPress={() => {
+                                            setIsEditMode(true);
+                                            setEditingRowId(null);
+                                            setEditingMovimiento(null);
+                                            setIsConfirmEditOpen(false);
+                                        }}
+                                    >
+                                        Editar
+                                    </Button>
+                                ) : (
+                                    <>
+                                        <Button
+                                            size="sm"
+                                            radius="sm"
+                                            variant="solid"
+                                            color="warning"
+                                            isDisabled={editingRowId == null || !editingMovimiento}
+                                            onPress={() => {
+                                                if (editingRowId != null && editingMovimiento) {
+                                                    setIsConfirmEditOpen(true);
+                                                }
+                                            }}
+                                        >
+                                            Guardar
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            radius="sm"
+                                            variant="bordered"
+                                            color="warning"
+                                            onPress={handleCancelEditMovimiento}
+                                        >
+                                            Cancelar
+                                        </Button>
+                                    </>
+                                )}
                                 <p>
                                     Total registros: <span className="font-semibold text-gray-800">{movimientos.length}</span>
                                 </p>
