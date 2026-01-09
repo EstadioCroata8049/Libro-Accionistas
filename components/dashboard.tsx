@@ -11,6 +11,7 @@ import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from 
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
 import { DatePicker, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spinner, ToastProvider, addToast, Checkbox } from "@heroui/react";
 import { CalendarDate } from "@internationalized/date";
+import { I18nProvider } from "@react-aria/i18n";
 
 import { supabase } from "@/lib/supabaseClient";
 
@@ -1233,7 +1234,7 @@ export function Dashboard() {
                                   const dd = String(d.getDate()).padStart(2, "0");
                                   const mm = String(d.getMonth() + 1).padStart(2, "0");
                                   const yyyy = d.getFullYear();
-                                  return `${dd} - ${mm} - ${yyyy}`;
+                                  return `${dd}-${mm}-${yyyy}`;
                               })()
                             : "-",
                     saldo:
@@ -1279,7 +1280,7 @@ export function Dashboard() {
                                   const dd = String(d.getUTCDate()).padStart(2, "0");
                                   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
                                   const yyyy = d.getUTCFullYear();
-                                  return `${dd} - ${mm} - ${yyyy}`;
+                                  return `${dd}-${mm}-${yyyy}`;
                               })()
                             : "-",
                         transferencia: m.numero_transferencia ?? "-",
@@ -1351,7 +1352,8 @@ export function Dashboard() {
         const fechaDefuncionIso =
             accionista.fechaDefuncion && accionista.fechaDefuncion !== "-"
                 ? (() => {
-                      const parts = accionista.fechaDefuncion.split(" - ");
+                      const cleanDate = accionista.fechaDefuncion.replace(/\s/g, "").replace(/\//g, "-");
+                      const parts = cleanDate.split("-");
                       if (parts.length === 3) {
                           const [dd, mm, yyyy] = parts;
                           return `${yyyy}-${mm}-${dd}`;
@@ -1552,7 +1554,7 @@ export function Dashboard() {
                               const dd = String(d.getDate()).padStart(2, "0");
                               const mm = String(d.getMonth() + 1).padStart(2, "0");
                               const yyyy = d.getFullYear();
-                              return `${dd} - ${mm} - ${yyyy}`;
+                              return `${dd}-${mm}-${yyyy}`;
                           })()
                         : "-",
                 saldo:
@@ -1710,7 +1712,7 @@ export function Dashboard() {
                           const dd = String(d.getUTCDate()).padStart(2, "0");
                           const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
                           const yyyy = d.getUTCFullYear();
-                          return `${dd} - ${mm} - ${yyyy}`;
+                          return `${dd}-${mm}-${yyyy}`;
                       })()
                     : "-",
                 transferencia: data.numero_transferencia ?? "-",
@@ -1800,7 +1802,9 @@ export function Dashboard() {
                 id: editingRowId,
                 fecha_transferencia: updatedRow.fecha !== "-" 
                     ? (() => {
-                        const parts = updatedRow.fecha.split(" - ");
+                        // Intentar parsear DD-MM-YYYY, DD/MM/YYYY, o DD - MM - YYYY
+                        const cleanDate = updatedRow.fecha.replace(/\s/g, "").replace(/\//g, "-");
+                        const parts = cleanDate.split("-");
                         if (parts.length === 3) {
                             const [dd, mm, yyyy] = parts;
                             return new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd))).toISOString();
@@ -2983,50 +2987,52 @@ export function Dashboard() {
                                                         </Checkbox>
                                                     </div>
                                                     {registroDraft.fallecido && (
-                                                        <DatePicker
-                                                            label="Fecha defunción (opcional)"
-                                                            variant="bordered"
-                                                            classNames={{
-                                                                inputWrapper:
-                                                                    "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
-                                                                input: "!text-black",
-                                                                innerWrapper: "!text-black",
-                                                                segment: "!text-black data-[placeholder]:!text-black",
-                                                                label: "text-gray-700",
-                                                            }}
-                                                            className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
-                                                            value={
-                                                                registroDraft.fechaDefuncion
-                                                                    ? (() => {
-                                                                          const [year, month, day] = registroDraft.fechaDefuncion.split("-");
-                                                                          if (!year || !month || !day) return null;
-                                                                          const y = Number(year);
-                                                                          const m = Number(month);
-                                                                          const d = Number(day);
-                                                                          if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-                                                                          return new CalendarDate(y, m, d);
-                                                                      })()
-                                                                    : null
-                                                            }
-                                                            onChange={(value) => {
-                                                                if (value) {
-                                                                    const yyyy = String(value.year).padStart(4, "0");
-                                                                    const mm = String(value.month).padStart(2, "0");
-                                                                    const dd = String(value.day).padStart(2, "0");
-                                                                    const formatted = `${yyyy}-${mm}-${dd}`;
-
-                                                                    setRegistroDraft((prev) => ({
-                                                                        ...prev,
-                                                                        fechaDefuncion: formatted,
-                                                                    }));
-                                                                } else {
-                                                                    setRegistroDraft((prev) => ({
-                                                                        ...prev,
-                                                                        fechaDefuncion: "",
-                                                                    }));
+                                                        <I18nProvider locale="es-CL">
+                                                            <DatePicker
+                                                                label="Fecha defunción (opcional)"
+                                                                variant="bordered"
+                                                                classNames={{
+                                                                    inputWrapper:
+                                                                        "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
+                                                                    input: "!text-black",
+                                                                    innerWrapper: "!text-black",
+                                                                    segment: "!text-black data-[placeholder]:!text-black",
+                                                                    label: "text-gray-700",
+                                                                }}
+                                                                className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
+                                                                value={
+                                                                    registroDraft.fechaDefuncion
+                                                                        ? (() => {
+                                                                              const [year, month, day] = registroDraft.fechaDefuncion.split("-");
+                                                                              if (!year || !month || !day) return null;
+                                                                              const y = Number(year);
+                                                                              const m = Number(month);
+                                                                              const d = Number(day);
+                                                                              if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+                                                                              return new CalendarDate(y, m, d);
+                                                                          })()
+                                                                        : null
                                                                 }
-                                                            }}
-                                                        />
+                                                                onChange={(value) => {
+                                                                    if (value) {
+                                                                        const yyyy = String(value.year).padStart(4, "0");
+                                                                        const mm = String(value.month).padStart(2, "0");
+                                                                        const dd = String(value.day).padStart(2, "0");
+                                                                        const formatted = `${yyyy}-${mm}-${dd}`;
+
+                                                                        setRegistroDraft((prev) => ({
+                                                                            ...prev,
+                                                                            fechaDefuncion: formatted,
+                                                                        }));
+                                                                    } else {
+                                                                        setRegistroDraft((prev) => ({
+                                                                            ...prev,
+                                                                            fechaDefuncion: "",
+                                                                        }));
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </I18nProvider>
                                                     )}
                                                 </div>
                                             </div>
@@ -3172,8 +3178,9 @@ export function Dashboard() {
                                                 </p>
                                             </div>
                                             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                                <DatePicker
-                                                    label="Fecha transferencia"
+                                                <I18nProvider locale="es-CL">
+                                                    <DatePicker
+                                                        label="Fecha transferencia"
                                                     variant="bordered"
                                                     classNames={{
                                                         inputWrapper:
@@ -3192,7 +3199,7 @@ export function Dashboard() {
                                                             const dd = String(value.day).padStart(2, "0");
                                                             const mm = String(value.month).padStart(2, "0");
                                                             const yyyy = String(value.year);
-                                                            const formatted = `${dd}/${mm}/${yyyy}`;
+                                                            const formatted = `${dd}-${mm}-${yyyy}`;
 
                                                             setNewMovimiento((prev) => ({
                                                                 ...prev,
@@ -3206,6 +3213,7 @@ export function Dashboard() {
                                                         }
                                                     }}
                                                 />
+                                                </I18nProvider>
                                                 <Input
                                                     label="N° transferencia"
                                                     variant="bordered"

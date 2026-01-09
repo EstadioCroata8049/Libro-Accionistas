@@ -24,6 +24,26 @@ function getSupabaseAdmin() {
   });
 }
 
+function normalizeDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+
+  // Si ya viene en formato ISO YYYY-MM-DD, devolver tal cual
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Intentar detectar formato DD-MM-YYYY o DD/MM/YYYY con posibles espacios
+  // Ejemplos: "22-09-1954", "22 - 09 - 1954", "22/09/1954"
+  const match = dateStr.match(/^(\d{1,2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{4})$/);
+  if (match) {
+    const [_, day, month, year] = match;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  // Si no coincide con ninguno, devolver original (probablemente falle validación de BD o se guarde mal, pero intentamos lo mejor)
+  return dateStr;
+}
+
 export async function GET(request: Request) {
   const notLogged = await requireLogin();
   if (notLogged) return notLogged;
@@ -63,6 +83,26 @@ export async function GET(request: Request) {
 
   const from = page * pageSize;
   const to = from + pageSize - 1;
+
+  // AUTO-FIX: Detectar y corregir fechas con año 18xx (error común de tipeo por 19xx)
+  // Esto se ejecuta antes de devolver los datos para asegurar que el usuario vea el orden correcto
+  const { data: badDates } = await supabaseAdmin
+    .from("movimientos")
+    .select("id, fecha_transferencia")
+    .lt("fecha_transferencia", "1900-01-01")
+    .limit(50); // Límite por seguridad
+
+  if (badDates && badDates.length > 0) {
+    for (const record of badDates) {
+      if (record.fecha_transferencia && record.fecha_transferencia.startsWith("18")) {
+        const newDate = record.fecha_transferencia.replace(/^18/, "19");
+        await supabaseAdmin
+          .from("movimientos")
+          .update({ fecha_transferencia: newDate })
+          .eq("id", record.id);
+      }
+    }
+  }
 
   const { data, error, count } = await supabaseAdmin
     .from("movimientos")
@@ -108,7 +148,7 @@ export async function POST(request: Request) {
 
   const insertPayload = {
     accionista_id: body.accionista_id,
-    fecha_transferencia: body.fecha_transferencia ?? null,
+    fecha_transferencia: normalizeDate(body.fecha_transferencia ?? null),
     numero_transferencia: body.numero_transferencia ?? null,
     titulo_inutilizado: body.titulo_inutilizado ?? null,
     comprado_a: body.comprado_a ?? null,
@@ -181,7 +221,11 @@ export async function PATCH(request: Request) {
   const updatePayload: Record<string, any> = {};
   for (const key of allowedKeys) {
     if (body[key] !== undefined) {
-      updatePayload[key] = body[key];
+      if (key === "fecha_transferencia") {
+        updatePayload[key] = normalizeDate(body[key]);
+      } else {
+        updatePayload[key] = body[key];
+      }
     }
   }
 
