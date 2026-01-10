@@ -2134,6 +2134,10 @@ export function Dashboard() {
                             </p>
                             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
+                                    <p className="text-[11px] text-gray-500">Nombres</p>
+                                    <p className="text-sm text-gray-900">{accionista.nombre || "-"}</p>
+                                </div>
+                                <div className="space-y-1">
                                     <p className="text-[11px] text-gray-500">Apellido paterno</p>
                                     <p className="text-sm text-gray-900">{accionista.apellidoPaterno || "-"}</p>
                                 </div>
@@ -3011,7 +3015,7 @@ export function Dashboard() {
                                                         </Checkbox>
                                                     </div>
                                                     {registroDraft.fallecido && (
-                                                        <I18nProvider locale="es-CL">
+                                                        <I18nProvider locale="es-ES">
                                                             <DatePicker
                                                                 label="Fecha defunción (opcional)"
                                                                 variant="bordered"
@@ -3023,7 +3027,7 @@ export function Dashboard() {
                                                                     segment: "!text-black data-[placeholder]:!text-black",
                                                                     label: "text-gray-700",
                                                                 }}
-                                                                className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
+                                                                className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black [&_[data-slot=segment][data-type=year][data-placeholder]]:!text-transparent [&_[data-slot=segment][data-type=year][data-placeholder]]:before:content-['aaaa'] [&_[data-slot=segment][data-type=year][data-placeholder]]:before:!text-black [&_[data-slot=segment][data-type=year][data-placeholder]]:before:absolute [&_[data-slot=segment][data-type=year][data-placeholder]]:relative"
                                                                 value={
                                                                     registroDraft.fechaDefuncion
                                                                         ? (() => {
@@ -3202,41 +3206,41 @@ export function Dashboard() {
                                                 </p>
                                             </div>
                                             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                                <I18nProvider locale="es-CL">
+                                                <I18nProvider locale="es-ES">
                                                     <DatePicker
                                                         label="Fecha transferencia"
-                                                    variant="bordered"
-                                                    classNames={{
-                                                        inputWrapper:
-                                                            "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
-                                                        input: "!text-black",
-                                                        innerWrapper: "!text-black",
-                                                        segment: "!text-black data-[placeholder]:!text-black",
-                                                        label: "text-gray-700",
-                                                    }}
-                                                    className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black"
-                                                    value={movimientoFecha}
-                                                    onChange={(value) => {
-                                                        setMovimientoFecha(value);
+                                                        variant="bordered"
+                                                        classNames={{
+                                                            inputWrapper:
+                                                                "!bg-white !border !border-gray-300 hover:!border-gray-400 data-[focus=true]:!border-gray-500 data-[open=true]:!border-gray-500",
+                                                            input: "!text-black",
+                                                            innerWrapper: "!text-black",
+                                                            segment: "!text-black data-[placeholder]:!text-black",
+                                                            label: "text-gray-700",
+                                                        }}
+                                                        className="max-w-[284px] [&_[data-slot=segment]]:!text-black [&_[data-slot=segment][data-placeholder]]:!text-black [&_[data-slot=segment][data-type=year][data-placeholder]]:!text-transparent [&_[data-slot=segment][data-type=year][data-placeholder]]:before:content-['aaaa'] [&_[data-slot=segment][data-type=year][data-placeholder]]:before:!text-black [&_[data-slot=segment][data-type=year][data-placeholder]]:before:absolute [&_[data-slot=segment][data-type=year][data-placeholder]]:relative"
+                                                        value={movimientoFecha}
+                                                        onChange={(value) => {
+                                                            setMovimientoFecha(value);
 
-                                                        if (value) {
-                                                            const dd = String(value.day).padStart(2, "0");
-                                                            const mm = String(value.month).padStart(2, "0");
-                                                            const yyyy = String(value.year);
-                                                            const formatted = `${dd}-${mm}-${yyyy}`;
+                                                            if (value) {
+                                                                const dd = String(value.day).padStart(2, "0");
+                                                                const mm = String(value.month).padStart(2, "0");
+                                                                const yyyy = String(value.year);
+                                                                const formatted = `${dd}-${mm}-${yyyy}`;
 
-                                                            setNewMovimiento((prev) => ({
-                                                                ...prev,
-                                                                fecha: formatted,
-                                                            }));
-                                                        } else {
-                                                            setNewMovimiento((prev) => ({
-                                                                ...prev,
-                                                                fecha: "",
-                                                            }));
-                                                        }
-                                                    }}
-                                                />
+                                                                setNewMovimiento((prev) => ({
+                                                                    ...prev,
+                                                                    fecha: formatted,
+                                                                }));
+                                                            } else {
+                                                                setNewMovimiento((prev) => ({
+                                                                    ...prev,
+                                                                    fecha: "",
+                                                                }));
+                                                            }
+                                                        }}
+                                                    />
                                                 </I18nProvider>
                                                 <Input
                                                     label="N° transferencia"
